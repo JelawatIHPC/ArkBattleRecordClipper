@@ -1,32 +1,44 @@
-# Prerequisites
-*.d
+# Xmake
+.xmake/
+build/
 
-# Compiled Object files
-*.slo
-*.lo
+# MacOS Cache
+.DS_Store
+
+# Visual Studio Code Cache
+.vscode/
+.vs/
+
+# AI Agents
+.claude/
+.cursor/
+.windsurf/
+.copilot/
+.github/copilot/
+.idea/
+.trae/
+
+# Compiled / library files
 *.o
 *.obj
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Compiled Dynamic libraries
-*.so
-*.dylib
-*.dll
-
-# Fortran module files
-*.mod
-*.smod
-
-# Compiled Static libraries
-*.lai
-*.la
-*.a
-*.lib
-
-# Executables
-*.exe
 *.out
 *.app
+*.exe
+*.dll
+*.lib
+*.a
+*.so
+*.pdb
+*.ilk
+*.dylib
+
+# Packaged files
+*.zip
+*.tar.gz
+*.7z
+*.xz
+*.rar
+*.tgz
+
+# Test video files
+*.mp4
