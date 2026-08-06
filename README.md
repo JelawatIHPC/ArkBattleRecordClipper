@@ -110,23 +110,9 @@ xmake install -o ./output
 # output/
 # ├── ArkBattleRecordClipper.exe
 # ├── assets/
-# │   ├── locator.png
-# │   └── locator2.png
-# ├── ui/
-# │   └── index.html
+# │   ├── ...
 # └── *.dll (FFmpeg, OpenCV 动态库)
 ```
-
-#### 创建发布包
-
-```bash
-# 打包源代码
-xmake pack
-
-# 输出：Source Code.zip
-```
-
----
 
 ## 使用说明
 

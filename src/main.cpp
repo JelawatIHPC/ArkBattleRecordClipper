@@ -18,6 +18,8 @@
 #include <webview/webview.h>
 #include <nlohmann/json.hpp>
 
+#include "errors.h"
+
 // 窗口尺寸常量
 constexpr int WINDOW_WIDTH = 864;
 constexpr int WINDOW_HEIGHT = 648;
@@ -37,10 +39,6 @@ static POINT dragStartCursorPos;
 static POINT dragStartWindowPos;
 static HWND g_hwnd = nullptr;
 
-// 全局变量用于错误处理
-static bool hasError = false;
-static std::string errorMessage = "";
-
 // MSVC 隐藏控制台窗口
 #ifdef _MSVC_STL_VERSION
 #pragma comment(linker, "/subsystem:windows /entry:mainCRTStartup")
@@ -52,9 +50,6 @@ Setting ParseSetting(const std::string& req) {
   
   // 创建 Setting 结构体
   Setting setting;
-  // 重置错误状态
-  hasError = false;
-  errorMessage = "错误处理模块出现错误";
   // 获取当前工作目录
   char current_path[4096];
   GetModuleFileName(NULL, current_path, 4096);
@@ -76,9 +71,9 @@ Setting ParseSetting(const std::string& req) {
     setting.select_pause_reserved_time = j.value("anim_reserved", 0.3f);
     setting.encoder = j.value("encoder", "auto");
     setting.decoder = j.value("decoder", "dxva2");
-  } catch ([[maybe_unused]] const std::exception& e) {
-    errorMessage = std::string("参数解析错误: ") + e.what();
-    hasError = true;
+  } catch (const std::exception& e) {
+    // 解析失败直接抛出, 由调用方投递到错误队列
+    throw std::runtime_error(std::string("参数解析错误: ") + e.what());
   }
   return setting;
 }
@@ -237,7 +232,14 @@ int main() {
   // 绑定 JavaScript 函数：启动处理
   w.bind("startProcessing", [](const std::string& req) -> std::string {
     // 解析 JSON 请求
-    Setting setting = ParseSetting(req);
+    Setting setting;
+    try {
+      setting = ParseSetting(req);
+    } catch (const std::exception& e) {
+      // 参数解析失败, 投递到错误队列
+      ACErrors().Post(e.what());
+      return "false";
+    }
     
     // 在新线程中启动处理
     std::thread processingThread([setting]() {
@@ -245,17 +247,14 @@ int main() {
         // 调用 core 模块的 Start 函数
         Start(setting);
       } catch (const std::runtime_error& e) {
-        // 捕获异常并设置错误状态
-        errorMessage = e.what();
-        hasError = true;
+        // 捕获异常并投递到错误队列
+        ACErrors().Post(e.what());
       } catch (const std::exception& e) {
         // 捕获其它类型的异常
-        errorMessage = e.what();
-        hasError = true;
+        ACErrors().Post(e.what());
       } catch (...) {
         // 捕获未知异常
-        errorMessage = "未知错误";
-        hasError = true;
+        ACErrors().Post("未知错误");
       }
     });
     processingThread.detach();
@@ -267,14 +266,6 @@ int main() {
   w.bind("getProgressMetrics", [](const std::string& req) -> std::string {
     nlohmann::json result;
     
-    // 检查是否有错误
-    if (hasError) {
-      // 返回错误信息
-      result["state"] = static_cast<int>(WorkState::sError);  // ERROR
-      result["errorMessage"] = errorMessage;
-      return result.dump();
-    }
-    
     // 直接调用 core 模块的 GetProgressMetrics 函数
     ProgressMetrics metrics = GetProgressMetrics();
     
@@ -284,19 +275,19 @@ int main() {
     result["fps"] = metrics.frames_per_second;
     result["qd"] = metrics.queue_depth;
     result["eta"] = metrics.eta_seconds;
+    // 附带并取走全部待消费的错误消息
+    result["errors"] = ACErrors().Drain();
     return result.dump();
   });
 
   // 绑定 JavaScript 函数：输入文件改变通知
   w.bind("onInputfileChanged", [](const std::string& req) -> std::string {
-    // 解析 JSON 请求
-    Setting setting = ParseSetting(req);
-
     try {
-      OnInputfileChanged(setting);
+      // 解析 JSON 请求并通知预分析器
+      OnInputfileChanged(ParseSetting(req));
     } catch (const std::exception& e) {
-      errorMessage = e.what();
-      hasError = true;
+      // 解析或启动预分析失败, 投递到错误队列
+      ACErrors().Post(e.what());
     }
 
     return "true";

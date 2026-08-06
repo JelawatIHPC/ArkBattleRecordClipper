@@ -12,11 +12,13 @@ build/
 # AI Agents
 .claude/
 .cursor/
+.opencode/
 .windsurf/
 .copilot/
 .github/copilot/
 .idea/
 .trae/
+AGENTS.md
 
 # Compiled / library files
 *.o

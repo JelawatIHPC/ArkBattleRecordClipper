@@ -1,8 +1,9 @@
 ﻿#include <string>
-#include <memory>
 #include <vector>
 #include <chrono>
-#include <thread>
+#include <mutex>
+#include <future>
+#include <atomic>
 #include <span>
 #include <stdexcept>
 
@@ -32,8 +33,34 @@ extern "C" {
 // 向控制台打印一次进度的最短间隔 (ms)
 constexpr int64_t DISPLAY_INTERVAL_MS = 333;
 
-// 全局进度指标存储
-static ProgressMetrics g_progress_metrics;
+// 全局进度指标存储 (原子快照, 任意线程可安全读写)
+static std::atomic<ProgressMetrics> g_progress_metrics;
+
+/* 读取当前进度指标快照
+ *
+ * @return ProgressMetrics 当前进度指标
+ */
+static ProgressMetrics MetricsSnapshot() {
+    return g_progress_metrics.load();
+}
+
+/* 写入进度指标
+ *
+ * @param metrics 新的进度指标
+ */
+static void MetricsStore(const ProgressMetrics& metrics) {
+    g_progress_metrics.store(metrics);
+}
+
+/* 仅更新工作状态, 其余字段保持不变
+ *
+ * @param state 新的工作状态
+ */
+static void MetricsSetState(WorkState state) {
+    ProgressMetrics metrics = g_progress_metrics.load();
+    metrics.state = state;
+    g_progress_metrics.store(metrics);
+}
 
 struct DetectedFrame {
     AVFrame* frame;
@@ -165,98 +192,98 @@ private:
 /**
  * @brief 预分析器
  * 
- * 管理预分析线程，定位视频中的暂停按钮。
+ * 输入文件改变时, 启动异步分析线程定位视频中的暂停按钮,
+ * 分析结果通过 std::future 返回给剪辑流程。
 */
 class PreAnalyser {
 public:
-    PreAnalyser() {
-        decoder_ = nullptr;
-        locator_ = nullptr;
-        result_ = {.box = cv::Rect(), .score = 0.0};
-
-        thread_ = std::thread(&PreAnalyser::Analyser, this);
-        thread_.detach();
-    }
-
-    PreAnalyser(const PreAnalyser&&) = delete;
+    PreAnalyser() = default;
+    PreAnalyser(const PreAnalyser&& other) = delete;
 
     /**
      * @brief 输入文件改变时调用
      * 
-     * 当输入文件改变时，调用此函数更新预分析器的输入文件路径。
-     * 这会使预分析器重新初始化，清空之前的分析结果。
+     * 启动一次新的异步预分析, 并取消之前尚未完成的分析。
      * 
-     * @param new_input_filename 新的输入文件路径
+     * @param setting 新的输入文件配置
     */
     void OnInputChanged(const Setting& setting) {
-        std::lock_guard<std::mutex> lock(onchange_mutex_);
-        input_filename_ = setting.input_filename;
-        // Decoder 随文件变化，Locator 只初始化一次（因为还没有加入第二种检测模式）
-        decoder_.reset(new ACDecoder(input_filename_, ACDecoder::Codec::DXVA2));
-        if (!locator_) locator_.reset(new ACLocator(setting.locator_filename));
-        // 清空 result
-        result_ = {.box = cv::Rect(), .score = 0.0};
-        // 跳转到 20 秒
-        decoder_->Seek(20);
-        // 设置状态
-        g_progress_metrics.state = WorkState::sLocating;
+        std::lock_guard<std::mutex> lock(mutex_);
+        current_++;
+        future_ = std::async(std::launch::async, [this, setting, generation = current_.load()]() {
+            return Analyse(setting, generation);
+        });
     }
 
-    LocatorResult GetResult() const noexcept { return result_; }
+    /**
+     * @brief 获取预分析结果
+     * 
+     * 阻塞等待当前预分析完成并返回定位结果。
+     * 
+     * @return LocatorResult 定位结果
+     * 
+     * @throw std::runtime_error 预分析失败或未完成时抛出
+    */
+    LocatorResult GetResult() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!future_.valid()) throw std::runtime_error("预分析尚未开始, 请先选择输入文件");
+        LocatorResult result = future_.get();
+        if (result.score < 0.95) throw std::runtime_error("预分析未完成, 请重新选择输入文件");
+        return result;
+    }
 
     ~PreAnalyser() {
-        if (thread_.joinable()) thread_.join();
+        // 取消正在运行的分析, 并等待线程退出
+        current_++;
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (future_.valid()) future_.wait();
     }
 private:
-    std::thread thread_;
-    std::mutex onchange_mutex_;
+    /**
+     * @brief 在后台线程中执行预分析
+     * 
+     * @param setting 输入文件配置
+     * @param generation 本次分析的世代号, 检测到世代号过期时放弃本次分析
+     * 
+     * @return LocatorResult 定位结果, 分析被取消时返回 score 为 0 的空结果
+    */
+    LocatorResult Analyse(const Setting& setting, int generation) {
+        ProgressMetrics metrics = MetricsSnapshot();
+        metrics.state = WorkState::sLocating;
+        MetricsStore(metrics);
 
-    std::string input_filename_;
-    std::unique_ptr<ACDecoder> decoder_;
-    std::unique_ptr<ACLocator> locator_;
+        ACDecoder decoder(setting.input_filename, ACDecoder::Codec::DXVA2);
+        ACLocator locator(setting.locator_filename);
+        decoder.Seek(20);
 
-    LocatorResult result_;
-
-    AVFrame* __Decode() {
-        // Sleep here, waken up after OnInputChanged() called
-        while (!decoder_ || !locator_) std::this_thread::yield();
-
-        onchange_mutex_.lock();
-        AVFrame* frame = decoder_->Decode();
-        onchange_mutex_.unlock();
-        return frame;
-    }
-
-    void Analyser() {
-        // 从解码器接收的视频帧
-        AVFrame* decoded_frame = nullptr;
-        
-        // 计时器
         ACMsTimer timer{ DISPLAY_INTERVAL_MS };
 
-        for (int frame_count = 0; (decoded_frame = __Decode()); frame_count++)  {
+        for (int frame_count = 0; AVFrame* decoded_frame = decoder.Decode(); frame_count++) {
+            // 输入文件已切换, 放弃本次分析
+            if (generation != current_.load()) return LocatorResult{};
 
-            auto new_result = locator_->Locate(decoded_frame);
+            LocatorResult new_result = locator.Locate(decoded_frame);
 
             // 定位阶段进度更新
-            g_progress_metrics.progress_percent = float(100.0 * new_result.score * new_result.score);
-            g_progress_metrics.frames_per_second = float(frame_count) / timer.Count() * 1000;
-            g_progress_metrics.queue_depth = 1;
-            g_progress_metrics.eta_seconds = 0;
-            
+            metrics = MetricsSnapshot();
+            metrics.progress_percent = 0.0;
+            metrics.frames_per_second = float(frame_count) / timer.Count() * 1000;
+            metrics.queue_depth = 1;
+            metrics.eta_seconds = 0;
+            MetricsStore(metrics);
+
             if (new_result.score < 0.95) continue;
-            // 当累计到 1 个检测结果时, 即确定检测坐标
-            result_ = new_result;
-            // 重置状态
-            g_progress_metrics.state = WorkState::sIdle;
-            // 清空指针，这样该线程就会休眠
-            onchange_mutex_.lock();
-            decoder_.reset();
-            locator_.reset();
-            onchange_mutex_.unlock();
+
+            // 定位完成, 恢复空闲状态
+            MetricsSetState(WorkState::sIdle);
+            return new_result;
         }
         throw std::runtime_error("无法定位到输入视频中的暂停按钮");
     }
+
+    std::mutex mutex_;
+    std::atomic<int> current_{ 0 };
+    std::future<LocatorResult> future_;
 };
 
 /**
@@ -362,18 +389,14 @@ void Start(const Setting& setting) {
         prior_decoder = DECODER_MAP.at(setting.decoder);
     }
 
-    // 第一轮：定位暂停按钮
+    // 第一轮：等待预分析完成, 获取暂停按钮定位结果
+    LocatorResult detect_result = g_analyser.GetResult();
+
     // 计时器
     ACMsTimer timer{ DISPLAY_INTERVAL_MS };
 
-    LocatorResult detect_result = g_analyser.GetResult();
-    while (detect_result.score < 0.95) {
-        std::this_thread::yield();
-        detect_result = g_analyser.GetResult();
-    }
-
     // 第二轮：识别暂停
-    g_progress_metrics.state = WorkState::sClipping;
+    MetricsSetState(WorkState::sClipping);
     ACDecoder input {
         setting.input_filename, prior_decoder
     };
@@ -509,10 +532,12 @@ void Start(const Setting& setting) {
         cmt_frame.frame = nullptr;
 
         // 更新全局进度指标
-        g_progress_metrics.progress_percent = 100.0f * frame_array.size() / input.GetFrameCount();
-        g_progress_metrics.frames_per_second = frame_array.size() * 1000.0f / timer.Count();
-        g_progress_metrics.queue_depth = (int)(frame_array.size() - next_commit_idx);
-        g_progress_metrics.eta_seconds = (int)((input.GetFrameCount() - frame_array.size()) / g_progress_metrics.frames_per_second * 1.025f);
+        ProgressMetrics metrics = MetricsSnapshot();
+        metrics.progress_percent = 100.0f * frame_array.size() / input.GetFrameCount();
+        metrics.frames_per_second = frame_array.size() * 1000.0f / timer.Count();
+        metrics.queue_depth = (int)(frame_array.size() - next_commit_idx);
+        metrics.eta_seconds = (int)((input.GetFrameCount() - frame_array.size()) / metrics.frames_per_second * 1.025f);
+        MetricsStore(metrics);
     }
 
 #ifdef _DEBUG
@@ -523,10 +548,12 @@ void Start(const Setting& setting) {
     output.Close();
 
     // 处理完成，设置进度为100%
-    g_progress_metrics.progress_percent = 100.0f;
-    g_progress_metrics.queue_depth = 0;
-    g_progress_metrics.eta_seconds = 0;
-    g_progress_metrics.state = WorkState::sIdle;
+    ProgressMetrics metrics = MetricsSnapshot();
+    metrics.progress_percent = 100.0f;
+    metrics.queue_depth = 0;
+    metrics.eta_seconds = 0;
+    metrics.state = WorkState::sIdle;
+    MetricsStore(metrics);
     g_start_mutex.unlock();
 }
 
@@ -535,5 +562,5 @@ void OnInputfileChanged(const Setting& setting) {
 }
 
 ProgressMetrics GetProgressMetrics() {
-    return g_progress_metrics;
+    return g_progress_metrics.load();
 }

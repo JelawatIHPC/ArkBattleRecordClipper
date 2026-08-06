@@ -7,28 +7,19 @@
     <title>ArkBattleRecordClipper</title>
 
     <style>
-        /* ============================================================
-         * 全局 CSS 变量定义
-         * 说明：定义应用程序的主题色系和通用尺寸参数，便于统一维护。
-         * 编辑历史：初始创建时定义，后续随 UI 风格调整。
-         * ============================================================ */
+        /* 全局 CSS 变量定义：主题色系和通用尺寸参数 */
         :root {
             --text-color: #0E0D14;      /* 主文字颜色：深灰黑 */
             --primary-color: #634057;   /* 第一主题色：暗紫红（用于边框、按钮、进度条） */
             --secondary-color: #E1CBB7; /* 第二主题色：浅杏色（用于导航栏背景） */
-            --tertiary-color: #235081;  /* 第三主题色：深蓝（用于启动按钮背景） */
+            --tertiary-color: #235081;  /* 第三主题色：深蓝（用于重要按钮背景，如启动按钮） */
             --bg-color: #F4EEE6;        /* 全局背景色：米白 */
             --border-width: 3px;        /* 全局边框宽度 */
             --pill-radius: 50px;        /* 药丸形圆角半径 */
             --circle-radius: 50%;       /* 圆形元素圆角 */
         }
 
-        /* ============================================================
-         * 全局重置样式
-         * 说明：清除浏览器默认边距和填充，统一盒模型，并全局禁用
-         *       用户文本选择（适用于桌面应用程序场景）。
-         * 编辑历史：初始创建。
-         * ============================================================ */
+        /* 全局重置：清除默认边距、统一盒模型、禁用文本选择 */
         * {
             margin: 0;
             padding: 0;
@@ -39,12 +30,7 @@
             -ms-user-select: none;
         }
 
-        /* ============================================================
-         * 滚动条全局禁用
-         * 说明：针对 html 和 body 元素隐藏滚动条，确保桌面应用窗口
-         *       不可滚动，保持界面固定。
-         * 编辑历史：后续添加，用于禁用页面滚动功能。
-         * ============================================================ */
+        /* 滚动条全局禁用：确保桌面应用窗口不可滚动 */
         html, body {
             overflow: hidden;
             scrollbar-width: none;
@@ -56,34 +42,23 @@
             display: none;
         }
 
-        /* ============================================================
-         * 页面根元素尺寸与字体
-         * 说明：设置 html/body 占据整个视口，指定微软雅黑为首选字体。
-         * ============================================================ */
+        /* 页面根元素：占据整个视口，微软雅黑字体 */
         html, body {
             width: 100%;
             height: 100%;
             font-family: "Microsoft YaHei", "微软雅黑", sans-serif;
         }
 
-        /* ============================================================
-         * body 弹性布局
-         * 说明：采用横向 flex 布局，左侧为导航栏，右侧为内容区。
-         * ============================================================ */
+        /* body 横向 flex 布局：左侧导航栏 + 右侧内容区 */
         body {
             display: flex;
             flex-direction: row;
         }
 
-        /* ============================================================
-         * 顶部拖动区域 (.drag-area)
-         * 说明：固定在窗口顶部的 30px 高区域，用于支持整个无边框
-         *       窗口的拖动操作。内部包含三个圆点作为视觉指示器。
-         * 编辑历史：初始创建，配合 C++ 端窗口拖动绑定使用。
-         * 元素构成：
-         *   - .drag-dots: 圆点容器，横向排列
-         *   - .drag-dot: 单个圆点，6x6px，浅杏色
-         * ============================================================ */
+        /* 顶部拖动区域 (.drag-area)：30px 高固定区域，支持无边框窗口拖动。
+           元素构成：
+             - .drag-dots: 圆点容器，横向排列
+             - .drag-dot: 6x6px 浅杏色圆点，3个 */
         .drag-area {
             position: fixed;
             top: 0;
@@ -110,14 +85,10 @@
             border-radius: 50%;
         }
 
-        /* ============================================================
-         * 窗口控制按钮 (.window-controls)
-         * 说明：固定在右上角的窗口控制区，包含最小化和关闭按钮。
-         * 编辑历史：初始创建，后续为关闭按钮添加红色悬停效果。
-         * 元素构成：
-         *   - .window-btn: 单个控制按钮，24x24px，圆形悬停背景
-         *   - .window-btn.close:hover: 关闭按钮悬停时变红色
-         * ============================================================ */
+        /* 窗口控制按钮 (.window-controls)：右上角最小化和关闭按钮
+           元素构成：
+             - .window-btn: 24x24px 圆形按钮
+             - .window-btn.close:hover: 关闭按钮悬停变红色 */
         .window-controls {
             position: fixed;
             top: 0;
@@ -154,16 +125,11 @@
             color: white;
         }
 
-        /* ============================================================
-         * 左侧导航栏 (.sidebar)
-         * 说明：固定宽度 160px 的垂直导航栏，浅杏色背景，包含三个
-         *       导航项（启动、策略、硬件）。
-         * 编辑历史：初始创建，后续将 Ionic 图标替换为 Unicode 圆点。
-         * 元素构成：
-         *   - .nav-item: 单个导航按钮，药丸形圆角，flex 布局
-         *   - .nav-item.active: 当前选中状态，暗紫红背景
-         *   - .nav-icon: 导航图标容器，显示 Unicode 圆点（●）
-         * ============================================================ */
+        /* 左侧导航栏 (.sidebar)：160px 宽，浅杏色背景，三个导航项
+           元素构成：
+             - .nav-item: 药丸形圆角按钮，flex 横向布局
+             - .nav-item.active: 当前选中状态，暗紫红背景
+             - .nav-icon: Unicode 圆点（●）图标容器 */
         .sidebar {
             width: 160px;
             height: 100vh;
@@ -211,13 +177,10 @@
             font-size: 16px;
         }
 
-        /* ============================================================
-         * 右侧内容区 (.content-area)
-         * 说明：flex:1 占据剩余空间，米白色背景，包含三个可切换页面。
-         * 元素构成：
-         *   - .page: 单个页面容器，默认 display:none
-         *   - .page.active: 当前显示页面，display:block
-         * ============================================================ */
+        /* 右侧内容区 (.content-area)：flex:1 占据剩余空间
+           元素构成：
+             - .page: 页面容器，默认 display:none
+             - .page.active: 当前显示页面，display:block */
         .content-area {
             flex: 1;
             height: 100vh;
@@ -235,14 +198,10 @@
             display: block;
         }
 
-        /* ============================================================
-         * 表单行 (.form-row)
-         * 说明：每一行表单项的容器，采用 flex 横向布局，左侧为标签，
-         *       右侧为控件。最小高度 72px 保证行间距一致。
-         * 元素构成：
-         *   - .form-label: 标签文字，固定宽度 120px，粗体
-         *   - .form-control: 控件容器，flex:1 自适应宽度，最大 600px
-         * ============================================================ */
+        /* 表单行 (.form-row)：横向 flex 布局，左侧标签 + 右侧控件
+           元素构成：
+             - .form-label: 固定宽度 120px，粗体
+             - .form-control: flex:1 自适应，最大 600px */
         .form-row {
             display: flex;
             align-items: center;
@@ -264,11 +223,8 @@
             max-width: 600px;
         }
 
-        /* ============================================================
-         * 药丸按钮 (.pill-button)
-         * 说明：圆角 50px 的轮廓按钮，透明背景，主题色边框和文字。
-         *       用于"选择文件"等次要操作。
-         * ============================================================ */
+        /* 药丸按钮 (.pill-button)：轮廓按钮，透明背景，主题色边框
+           用于"选择文件"等次要操作 */
         .pill-button {
             height: 50px;
             padding: 0 40px;
@@ -287,10 +243,7 @@
             background-color: rgba(0, 0, 0, 0.05);
         }
 
-        /* ============================================================
-         * 药丸输入框 (.pill-input)
-         * 说明：圆角文本输入框，主题色边框，用于输出文件名等文本输入。
-         * ============================================================ */
+        /* 药丸输入框 (.pill-input)：圆角文本输入框，用于输出文件名 */
         .pill-input {
             width: 100%;
             height: 50px;
@@ -308,11 +261,8 @@
             color: rgba(0, 0, 0, 0.4);
         }
 
-        /* ============================================================
-         * 药丸下拉框 (.pill-select)
-         * 说明：自定义样式的下拉选择框，隐藏默认箭头，使用 SVG 自定义
-         *       下拉箭头图标。用于编码器、解码器、检测模式选择。
-         * ============================================================ */
+        /* 药丸下拉框 (.pill-select)：隐藏默认箭头，SVG 自定义下拉箭头
+           用于编码器、解码器、检测模式选择 */
         .pill-select {
             width: 100%;
             height: 50px;
@@ -340,15 +290,11 @@
             margin: 5px;
         }
 
-        /* ============================================================
-         * 滑块条相关样式
-         * 说明：包含滑块容器、自定义滑块轨道和滑块拇指、以及数值显示框。
-         * 编辑历史：初始创建，后续为码率滑块添加"0 显示 Auto"的特殊逻辑。
-         * 元素构成：
-         *   - .slider-container: 滑块与数值显示的横向布局容器
-         *   - .pill-slider: 自定义 range 滑块，支持 Webkit 和 Firefox
-         *   - .slider-value: 数值显示框，药丸形边框
-         * ============================================================ */
+        /* 滑块条相关样式
+           元素构成：
+             - .slider-container: 滑块与数值显示的横向容器
+             - .pill-slider: 自定义 range 滑块，支持 Webkit 和 Firefox
+             - .slider-value: 药丸形数值显示框 */
         .slider-container {
             display: flex;
             align-items: center;
@@ -364,7 +310,7 @@
             cursor: pointer;
         }
 
-        /* Webkit 滑块轨道：使用 CSS 变量 --value-percent 实现已选部分填充 */
+        /* Webkit 滑块轨道：CSS 变量 --value-percent 控制已选部分填充 */
         .pill-slider::-webkit-slider-runnable-track {
             height: 8px;
             background: linear-gradient(to right, var(--secondary-color) 0%, var(--secondary-color) var(--value-percent, 0%), transparent var(--value-percent, 0%), transparent 100%);
@@ -425,14 +371,11 @@
             color: var(--primary-color);
         }
 
-        /* ============================================================
-         * 圆形复选框 (.circle-checkbox-wrapper)
-         * 说明：自定义圆形复选框，隐藏原生 input，使用 div 模拟视觉样式。
-         *       用于"一倍速加速"选项。
-         * 元素构成：
-         *   - .circle-checkbox: 36x36px 圆形边框，选中时填充主题色并显示 ✓
-         *   - .hidden-checkbox: 原生 checkbox，display:none
-         * ============================================================ */
+        /* 圆形复选框 (.circle-checkbox-wrapper)：隐藏原生 input，div 模拟
+           用于"一倍速加速"选项
+           元素构成：
+             - .circle-checkbox: 36x36px 圆形，选中时填充主题色并显示 ✓
+             - .hidden-checkbox: 原生 checkbox，display:none */
         .circle-checkbox-wrapper {
             display: flex;
             align-items: center;
@@ -473,21 +416,14 @@
             display: none;
         }
 
-        /* ============================================================
-         * 主题色文字标签 (.text-label)
-         * 说明：用于显示输入文件路径等只读信息的文字样式。
-         * ============================================================ */
+        /* 主题色文字标签 (.text-label)：用于输入文件路径等只读文字 */
         .text-label {
             font-size: 16px;
             color: var(--primary-color);
         }
 
-        /* ============================================================
-         * 启动按钮容器 (.start-button-container)
-         * 说明：固定定位在窗口底部中央，包含启动按钮和分析进度指示器。
-         * 编辑历史：后续添加分析进度子元素，使用 absolute 定位避免
-         *       挤占按钮位置。
-         * ============================================================ */
+        /* 启动按钮容器 (.start-button-container)：固定定位窗口底部中央
+           包含启动按钮和分析进度指示器，后者使用 absolute 定位避免挤占按钮 */
         .start-button-container {
             position: fixed;
             bottom: 40px;
@@ -496,11 +432,7 @@
             z-index: 100;
         }
 
-        /* ============================================================
-         * 启动按钮 (.start-button)
-         * 说明：主操作按钮，深蓝背景，白色文字，药丸形，带阴影和悬停放大效果。
-         *       点击后触发视频处理流程。
-         * ============================================================ */
+        /* 启动按钮 (.start-button)：主操作按钮，深蓝背景，白色文字，药丸形 */
         .start-button {
             width: 240px;
             height: 50px;
@@ -520,18 +452,11 @@
             transform: scale(1.07);
         }
 
-        /* ============================================================
-         * 分析进度指示器 (.analysis-progress)
-         * 说明：位于启动按钮右侧，当后端处于 sLocating 状态（state=1）
-         *       时显示小型旋转进度条和"分析中 ..."文字。
-         * 编辑历史：
-         *   - 初始创建，尺寸 48x48，与按钮并排显示/隐藏
-         *   - 后续改为 absolute 定位，避免挤占按钮位置
-         *   - 后续尺寸缩小为 40x40，改为与按钮一起隐藏/显示
-         * 元素构成：
-         *   - .mini-progress: 40x40 小型旋转 SVG 进度条
-         *   - .analysis-label: "分析中 ..."文字标签
-         * ============================================================ */
+        /* 分析进度指示器 (.analysis-progress)：absolute 定位在启动按钮右侧，
+           后端 sLocating 状态（state=1）时显示。
+           元素构成：
+             - .mini-progress: 40x40 小型旋转 SVG 进度条
+             - .analysis-label: "分析中 ..."文字标签 */
         .analysis-progress {
             display: none;
             align-items: center;
@@ -567,7 +492,7 @@
 
         .mini-progress-bar {
             fill: none;
-            stroke: url(#mini-gradient); /* 引用 SVG 内定义的渐变 */
+            stroke: url(#mini-gradient);
             stroke-width: 4;
             stroke-linecap: round;
             stroke-dasharray: 26.2 52.4; /* 创建旋转弧线效果 */
@@ -579,21 +504,14 @@
             font-weight: normal;
         }
 
-        /* ============================================================
-         * 进度界面遮罩层 (.progress-overlay)
-         * 说明：全屏固定遮罩，覆盖整个应用窗口，显示视频处理进度。
-         *       通过 opacity 和 visibility 实现淡入淡出过渡动画。
-         * 编辑历史：
-         *   - 初始创建
-         *   - 后续修复完成状态返回时进度条闪烁问题，通过延迟移除
-         *     progress-complete 类实现
-         * 元素构成：
-         *   - .progress-area: 进度条与指标的整体容器
-         *   - .circular-progress: 240x240 大型圆形进度条
-         *   - .progress-metrics: FPS/QD/ETA 指标显示区
-         *   - .progress-tips: 状态提示文字
-         *   - .back-button: 完成后显示的返回按钮
-         * ============================================================ */
+        /* 进度界面遮罩层 (.progress-overlay)：全屏固定遮罩，通过 opacity/visibility
+           实现淡入淡出动画。
+           元素构成：
+             - .progress-area: 进度条与指标容器
+             - .circular-progress: 240x240 大型圆形进度条
+             - .progress-metrics: FPS/QD/ETA 指标区
+             - .progress-tips: 状态提示文字
+             - .back-button: 完成后显示的返回按钮 */
         .progress-overlay {
             position: fixed;
             top: 0px;
@@ -616,16 +534,12 @@
             visibility: visible;
         }
 
-        /* ============================================================
-         * 大型圆形进度条 (.circular-progress)
-         * 说明：240x240 SVG 旋转进度条，中心显示百分比数字。
-         *       使用 stroke-dasharray 和 stroke-dashoffset 控制进度。
-         * 编辑历史：后续添加 progress-area 容器解决指标位置问题。
-         * 元素构成：
-         *   - SVG circle.progress-bg: 背景圆环（浅灰色）
-         *   - SVG circle.progress-bar: 进度圆环（主题色渐变）
-         *   - .progress-percentage: 中心百分比文字
-         * ============================================================ */
+        /* 大型圆形进度条 (.circular-progress)：240x240 SVG 旋转进度条，
+           中心显示百分比数字。使用 stroke-dasharray 控制进度。
+           元素构成：
+             - SVG circle.progress-bg: 背景圆环（浅灰色）
+             - SVG circle.progress-bar: 进度圆环（主题色渐变）
+             - .progress-percentage: 中心百分比文字 */
         .circular-progress {
             position: relative;
             width: 200px;
@@ -654,7 +568,7 @@
 
         .progress-bar {
             fill: none;
-            stroke: url(#gradient); /* 引用 SVG 内定义的渐变 */
+            stroke: url(#gradient);
             stroke-width: 12;
             stroke-linecap: round;
         }
@@ -669,11 +583,7 @@
             color: var(--primary-color);
         }
 
-        /* ============================================================
-         * 进度提示文字 (.progress-tips)
-         * 说明：位于进度条下方的状态提示，根据后端 WorkState 动态更新。
-         *       处理完成后显示输出文件名。
-         * ============================================================ */
+        /* 进度提示文字 (.progress-tips)：进度条下方状态提示，根据 WorkState 动态更新 */
         .progress-tips {
             margin-top: 50px;
             font-size: 20px;
@@ -683,12 +593,9 @@
             max-width: 80%;
         }
 
-        /* ============================================================
-         * 进度完成状态样式 (.progress-complete)
-         * 说明：当处理完成时添加到 progress-overlay 的类，隐藏进度条
-         *       和指标，显示"完成"文字和返回按钮。
-         * 编辑历史：修复返回时闪烁问题，通过 setTimeout 延迟移除类。
-         * ============================================================ */
+        /* 进度完成状态样式 (.progress-complete)：处理完成时添加到 progress-overlay 的类。
+           注意：返回按钮通过 setTimeout(500ms) 延迟移除此类，否则淡出动画与
+           progress-complete 切换同时发生会导致进度条瞬间闪现。 */
         .progress-complete .circular-progress {
             display: none;
         }
@@ -705,12 +612,8 @@
             display: block;
         }
 
-        /* ============================================================
-         * 进度区域容器 (.progress-area)
-         * 说明：包含圆形进度条和右侧指标的横向布局容器。
-         *       使用 relative 定位作为指标 absolute 定位的参考系。
-         * 编辑历史：后续添加，用于将指标固定在进度条右侧。
-         * ============================================================ */
+        /* 进度区域容器 (.progress-area)：横向 flex 布局，relative 定位
+           作为 .progress-metrics 的 absolute 定位参考系 */
         .progress-area {
             display: flex;
             flex-direction: row;
@@ -730,16 +633,13 @@
             flex-shrink: 0;
         }
 
-        /* ============================================================
-         * 进度指标区 (.progress-metrics)
-         * 说明：位于大型进度条右侧，显示 FPS（帧率）、QD（队列深度）、
-         *       ETA（预计剩余时间）三项实时指标。
-         * 编辑历史：后续改为 absolute 定位，确保始终位于进度条右侧。
-         * 元素构成：
-         *   - .metric-item: 单行指标，label 与 value 两端对齐
-         *   - .metric-label: 指标名称，粗体
-         *   - .metric-value: 指标数值，左对齐
-         * ============================================================ */
+        /* 进度指标区 (.progress-metrics)：absolute 定位在进度条右侧，
+           显示 FPS（帧率）、QD（队列深度）、ETA（预计剩余时间）。
+           注意：改为 absolute 定位前，指标在 flex 布局下会跑到进度条下方。
+           元素构成：
+             - .metric-item: label 与 value 两端对齐
+             - .metric-label: 指标名称，粗体
+             - .metric-value: 指标数值，左对齐 */
         .progress-metrics {
             display: flex;
             flex-direction: column;
@@ -769,11 +669,8 @@
             flex-shrink: 0;
         }
 
-        /* ============================================================
-         * 返回按钮 (.back-button)
-         * 说明：处理完成后显示的按钮，点击返回主界面。
-         *       默认隐藏，仅在 .progress-complete 状态下显示。
-         * ============================================================ */
+        /* 返回按钮 (.back-button)：处理完成后显示，点击返回主界面
+           仅在 .progress-complete 状态下可见 */
         .back-button {
             display: none;
             margin-top: 40px;
@@ -799,12 +696,8 @@
             display: block;
         }
 
-        /* ============================================================
-         * 消息框遮罩层 (.message-overlay)
-         * 说明：z-index 1199 的半透明黑色遮罩，消息框显示时覆盖整个
-         *       窗口，阻止用户操作背后内容。
-         * 编辑历史：后续添加，配合消息框系统使用。
-         * ============================================================ */
+        /* 消息框遮罩层 (.message-overlay)：z-index 1199 半透明黑色遮罩，
+           阻止用户操作背后内容 */
         .message-overlay {
             position: fixed;
             top: 0;
@@ -823,15 +716,11 @@
             visibility: visible;
         }
 
-        /* ============================================================
-         * 消息框 (.message-box)
-         * 说明：z-index 1200 的圆角矩形消息框，显示在窗口中央。
-         *       用于替代原生 alert，提供更美观的提示体验。
-         * 编辑历史：后续添加，支持通过 window.showMessage(text) 调用。
-         * 元素构成：
-         *   - .message-text: 消息内容，左对齐，主题色粗体
-         *   - .message-button: "确认"药丸按钮，居中显示
-         * ============================================================ */
+        /* 消息框 (.message-box)：z-index 1200 圆角矩形消息框，
+           替代原生 alert，通过 window.showMessage(text) 调用
+           元素构成：
+             - .message-text: 消息内容，左对齐，主题色粗体
+             - .message-button: "确认"药丸按钮 */
         .message-box {
             position: fixed;
             top: 50%;
@@ -889,12 +778,8 @@
     </style>
 </head>
 <body>
-    <!-- ============================================================
-         顶部拖动区域
-         说明：高度 30px 的固定区域，用于拖动整个无边框窗口。
-               内部包含三个浅杏色圆点作为视觉指示器。
-         交互：mousedown 时调用 C++ 绑定的 startDrag/doDrag/endDrag。
-         ============================================================ -->
+    <!-- 顶部拖动区域：30px 高，内部三个浅杏色圆点
+         交互：mousedown/mousemove/mouseup 调用 C++ startDrag/doDrag/endDrag -->
     <div class="drag-area" id="drag-area">
         <div class="drag-dots">
             <div class="drag-dot"></div>
@@ -903,22 +788,13 @@
         </div>
     </div>
 
-    <!-- ============================================================
-         窗口控制按钮区
-         说明：右上角的最小化（−）和关闭（×）按钮。
-         交互：点击分别调用 C++ 绑定的 minimizeWindow/closeWindow。
-         ============================================================ -->
+    <!-- 窗口控制按钮：最小化和关闭，调用 C++ minimizeWindow/closeWindow -->
     <div class="window-controls">
         <div class="window-btn minimize" id="btn-minimize" title="最小化">−</div>
         <div class="window-btn close" id="btn-close" title="关闭">×</div>
     </div>
 
-    <!-- ============================================================
-         左侧导航栏
-         说明：固定宽度 160px，包含三个导航项：启动、策略、硬件。
-               点击切换右侧内容区页面，当前项高亮显示（暗紫红背景）。
-         编辑历史：后续将 Ionic 图标移除，改用 Unicode 圆点（●）。
-         ============================================================ -->
+    <!-- 左侧导航栏：三个导航项（启动、策略、硬件），点击切换 .active 类 -->
     <div class="sidebar">
         <div class="nav-item active" data-page="start">
             <span class="nav-icon">●</span>
@@ -934,20 +810,9 @@
         </div>
     </div>
 
-    <!-- ============================================================
-         右侧内容区
-         说明：包含三个页面（启动、策略、硬件），通过 .active 类控制显示。
-         ============================================================ -->
+    <!-- 右侧内容区 -->
     <div class="content-area">
-        <!-- ========================================================
-             启动页面 (page-start)
-             说明：主操作页面，包含文件选择、输入/输出文件显示、码率设置。
-             表单项：
-               - 选择文件按钮：调用 C++ selectVideoFile 打开文件对话框
-               - 输入文件标签：显示选中的文件绝对路径
-               - 输出文件输入框：自动填充为"原文件名_clipped.扩展名"
-               - 码率滑块：0-30 Mbps，0 时显示"Auto"
-             ======================================================== -->
+        <!-- 启动页面：文件选择、输入/输出文件、码率滑块 -->
         <div class="page active" id="page-start">
             <div class="form-row">
                 <div class="form-label"></div>
@@ -978,15 +843,7 @@
             </div>
         </div>
 
-        <!-- ========================================================
-             策略页面 (page-strategy)
-             说明：视频处理策略配置页面。
-             表单项：
-               - 检测模式：像素检测（目前仅支持 pixel）
-               - 一倍速加速：圆形复选框，控制是否启用 1x 速度输出
-               - 子弹时间加速：1.0-5.0 滑块，控制非暂停片段的加速倍数
-               - 选中动画保留：0.0-1.0s 滑块，控制角色选中动画保留时长
-             ======================================================== -->
+        <!-- 策略页面：检测模式、一倍速加速、子弹时间加速、选中动画保留 -->
         <div class="page" id="page-strategy">
             <div class="form-row">
                 <div class="form-label">检测模式</div>
@@ -1026,13 +883,7 @@
             </div>
         </div>
 
-        <!-- ========================================================
-             硬件页面 (page-hardware)
-             说明：编解码器选择页面，配置视频处理使用的硬件加速。
-             表单项：
-               - 编码器：自动 / NVIDIA NVENC / AMD AMF / Intel QSV / CPU
-               - 解码器：DXVA2 / CPU
-             ======================================================== -->
+        <!-- 硬件页面：编码器、解码器选择 -->
         <div class="page" id="page-hardware">
             <div class="form-row">
                 <div class="form-label">编码器</div>
@@ -1059,16 +910,9 @@
         </div>
     </div>
 
-    <!-- ============================================================
-         启动按钮和分析进度区
-         说明：固定定位在窗口底部中央。
-               - 启动按钮：点击后收集表单数据并调用 C++ startProcessing
-               - 分析进度：absolute 定位在按钮右侧，后端 state=1 时显示
-         编辑历史：
-           - 初始仅含启动按钮
-           - 后续添加分析进度指示器（48x48，后改为 40x40）
-           - 后续改为 absolute 定位避免挤占按钮
-         ============================================================ -->
+    <!-- 启动按钮和分析进度区：固定窗口底部中央
+         - 启动按钮：调用 C++ startProcessing
+         - 分析进度：absolute 定位在按钮右侧，state=1 时显示 -->
     <div class="start-button-container">
         <button class="start-button" id="btn-start">启动</button>
         <div class="analysis-progress" id="analysis-progress">
@@ -1088,16 +932,8 @@
         </div>
     </div>
 
-    <!-- ============================================================
-         进度界面遮罩层 (progress-overlay)
-         说明：全屏覆盖的进度显示界面，处理期间显示在内容区之上。
-               通过 .active 控制显示，.progress-complete 控制完成状态。
-         元素构成：
-           - .progress-area: 包含圆形进度条和右侧指标
-           - .progress-complete-text: "完成"文字（完成时显示）
-           - .progress-tips: 动态状态提示
-           - .back-button: 返回主界面按钮（完成时显示）
-         ============================================================ -->
+    <!-- 进度界面遮罩层：全屏覆盖，处理期间显示
+         元素构成：进度条 + 指标 + 状态提示 + 返回按钮 -->
     <div class="progress-overlay" id="progress-overlay">
         <div class="progress-area">
             <div class="circular-progress">
@@ -1133,14 +969,10 @@
         <button class="back-button" id="btn-back">返回</button>
     </div>
 
-    <!-- ============================================================
-         消息框系统
-         说明：自定义消息框，替代原生 alert。
-               - message-overlay: 半透明遮罩层（z-index 1199）
-               - message-box: 消息框主体（z-index 1200）
-         调用方式：window.showMessage(text)
-         编辑历史：后续添加，用于统一错误提示和表单验证提示。
-         ============================================================ -->
+    <!-- 消息框系统：自定义消息框，替代原生 alert
+         - message-overlay: z-index 1199
+         - message-box: z-index 1200
+         调用：window.showMessage(text) -->
     <div class="message-overlay" id="message-overlay"></div>
     <div class="message-box" id="message-box">
         <div class="message-text" id="message-text"></div>
@@ -1148,37 +980,22 @@
     </div>
 
     <script>
-        // ============================================================
-        // 导航切换功能
-        // 说明：为所有 .nav-item 绑定点击事件，切换活动导航项和对应页面。
-        // 实现：移除所有 .active 类，然后为当前项和目标页面添加 .active。
-        // ============================================================
+        // 导航切换：点击 .nav-item 切换活动导航项和对应页面
         document.querySelectorAll('.nav-item').forEach(item => {
             item.addEventListener('click', function() {
-                // 移除所有活动状态
                 document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
                 document.querySelectorAll('.page').forEach(page => page.classList.remove('active'));
-                
-                // 添加当前活动状态
                 this.classList.add('active');
                 const pageId = 'page-' + this.dataset.page;
                 document.getElementById(pageId).classList.add('active');
             });
         });
 
-        // ============================================================
-        // 滑块通用初始化函数 setupSlider
-        // 说明：为指定滑块绑定 input 事件，实时更新 CSS 变量 --value-percent
-        //       实现轨道已选部分填充效果，并同步更新数值显示。
-        // 参数：
-        //   sliderId - 滑块元素 ID
-        //   valueId  - 数值显示元素 ID
-        //   suffix   - 数值后缀（如单位符号）
-        // ============================================================
+        // 滑块通用初始化 setupSlider：绑定 input 事件，更新 CSS 变量 --value-percent 实现轨道填充
         function setupSlider(sliderId, valueId, suffix = '') {
             const slider = document.getElementById(sliderId);
             const valueDisplay = document.getElementById(valueId);
-            
+
             function updateSlider() {
                 const min = parseFloat(slider.min) || 0;
                 const max = parseFloat(slider.max) || 100;
@@ -1187,50 +1004,35 @@
                 slider.style.setProperty('--value-percent', percent + '%');
                 valueDisplay.textContent = slider.value + suffix;
             }
-            
+
             slider.addEventListener('input', updateSlider);
-            // 初始化
             updateSlider();
         }
 
-        // ============================================================
-        // 码率滑块特殊处理
-        // 说明：码率滑块值为 0 时，数值显示为"Auto"而非"0"；
-        //       其他值正常显示数字。同时更新轨道填充效果。
-        // 编辑历史：后续添加，满足"0 时显示 Auto"的需求。
-        // ============================================================
+        // 码率滑块特殊处理：值为 0 时显示 "Auto" 而非 "0"
         const bitrateSlider = document.getElementById('bitrate-slider');
         const bitrateValue = document.getElementById('bitrate-value');
-        
+
         function updateBitrateSlider() {
             const min = parseFloat(bitrateSlider.min) || 0;
             const max = parseFloat(bitrateSlider.max) || 100;
             const value = parseFloat(bitrateSlider.value) || 0;
             const percent = ((value - min) / (max - min)) * 100;
             bitrateSlider.style.setProperty('--value-percent', percent + '%');
-            // 值为0时显示"Auto"，否则显示数字
             bitrateValue.textContent = value === 0 ? 'Auto' : value;
         }
-        
+
         bitrateSlider.addEventListener('input', updateBitrateSlider);
         updateBitrateSlider();
-        
+
         setupSlider('bullet-slider', 'bullet-value');
         setupSlider('anim-slider', 'anim-value');
 
-        // ============================================================
-        // 圆形复选框交互
-        // 说明：自定义圆形复选框的视觉状态同步。
-        //       点击 .circle-checkbox-wrapper 时切换 checkbox 状态，
-        //       并根据 checked 状态添加/移除 .checked 类以显示 ✓ 标记。
-        // 元素：
-        //   - #checkbox-speed: 原生隐藏 checkbox
-        //   - #checkbox-speed-visual: 可视圆形复选框 div
-        // ============================================================
+        // 圆形复选框交互：点击 wrapper 切换 checkbox，同步 .checked 类显示 ✓
         const checkboxSpeed = document.getElementById('checkbox-speed');
         const checkboxVisual = document.getElementById('checkbox-speed-visual');
         const checkboxWrapper = document.querySelector('.circle-checkbox-wrapper');
-        
+
         function updateCheckboxVisual() {
             if (checkboxSpeed.checked) {
                 checkboxVisual.classList.add('checked');
@@ -1238,51 +1040,31 @@
                 checkboxVisual.classList.remove('checked');
             }
         }
-        
+
         checkboxSpeed.addEventListener('change', updateCheckboxVisual);
-        
-        // 点击 wrapper 切换 checkbox
         checkboxWrapper.addEventListener('click', function(e) {
             e.preventDefault();
             checkboxSpeed.checked = !checkboxSpeed.checked;
             updateCheckboxVisual();
         });
 
-        // ============================================================
-        // 文件选择按钮功能
-        // 说明：点击"选择文件"按钮时，调用 C++ 绑定的 selectVideoFile() 打开
-        //       系统文件对话框。获取绝对路径后：
-        //       1. 提取文件名显示在输入文件标签
-        //       2. 自动生成"原文件名_clipped.扩展名"填入输出框
-        //       3. 调用 onInputfileChanged 通知后端进行预分析
-        //       4. 隐藏分析进度指示器（等待后端状态更新后再显示）
-        // 异常处理：捕获错误并通过 alert 提示（后续可改为 showMessage）。
-        // ============================================================
+        // 文件选择按钮：调用 C++ selectVideoFile()，自动生成输出文件名，调用 onInputfileChanged 通知后端
         document.getElementById('btn-input-file').addEventListener('click', async function() {
-            // 调用 C++ 绑定的 selectVideoFile 函数
             if (!window.selectVideoFile) {
                 console.error('selectVideoFile 函数未绑定');
                 return;
             }
-            
+
             try {
-                // 调用 C++ 函数获取绝对路径（返回字符串）
                 const result = await window.selectVideoFile();
-                
-                // 用户取消选择（返回 null）
                 if (result === null || result === undefined) {
                     return;
                 }
-                
-                // 从绝对路径中提取文件名
-                // 处理 Windows 路径分隔符 \ 和 /
+
                 const pathParts = result.split(/[\\/]/);
                 const fileName = pathParts[pathParts.length - 1];
-                
-                // 输入文件标签直接显示绝对路径
                 document.getElementById('input-file-label').textContent = result;
-                
-                // 生成输出文件名（原文件名 + _clipped）
+
                 const lastDotIndex = fileName.lastIndexOf('.');
                 let outputFileName;
                 if (lastDotIndex > 0) {
@@ -1292,11 +1074,9 @@
                 } else {
                     outputFileName = fileName + '_clipped';
                 }
-                
-                // 更新输出文件输入框
+
                 document.querySelector('#page-start .pill-input').value = outputFileName;
-                
-                // 通知后端输入文件已改变
+
                 if (window.onInputfileChanged) {
                     try {
                         const settings = collectSettings();
@@ -1306,31 +1086,25 @@
                     }
                 }
 
-                // 先隐藏分析进度，等检测到定位状态再显示
+                // 隐藏分析进度，等检测到 sLocating 状态再显示
                 const analysisProgress = document.getElementById('analysis-progress');
                 if (analysisProgress) {
                     analysisProgress.classList.remove('active');
                 }
-                
+
             } catch (err) {
                 console.error('文件选择错误:', err);
                 alert('文件选择失败: ' + err.message);
             }
         });
 
-        // ============================================================
-        // 窗口拖动功能
-        // 说明：监听拖动区域的鼠标事件，调用 C++ 绑定的拖动函数实现
-        //       无边框窗口拖动。
-        // 绑定函数：startDrag() / doDrag() / endDrag()
-        // ============================================================
+        // 窗口拖动：调用 C++ startDrag/doDrag/endDrag
         const dragArea = document.getElementById('drag-area');
         let isDragging = false;
 
         dragArea.addEventListener('mousedown', function(e) {
             e.preventDefault();
             isDragging = true;
-            // 调用 C++ 绑定的 startDrag 函数
             if (window.startDrag) {
                 window.startDrag();
             }
@@ -1339,7 +1113,6 @@
         document.addEventListener('mousemove', function(e) {
             if (isDragging) {
                 e.preventDefault();
-                // 调用 C++ 绑定的 doDrag 函数
                 if (window.doDrag) {
                     window.doDrag();
                 }
@@ -1349,17 +1122,13 @@
         document.addEventListener('mouseup', function(e) {
             if (isDragging) {
                 isDragging = false;
-                // 调用 C++ 绑定的 endDrag 函数
                 if (window.endDrag) {
                     window.endDrag();
                 }
             }
         });
 
-        // ============================================================
-        // 窗口控制按钮事件
-        // 说明：最小化和关闭按钮分别调用 C++ 绑定的窗口控制函数。
-        // ============================================================
+        // 窗口控制按钮：最小化/关闭
         document.getElementById('btn-minimize').addEventListener('click', function() {
             if (window.minimizeWindow) {
                 window.minimizeWindow();
@@ -1372,40 +1141,24 @@
             }
         });
 
-        // ============================================================
-        // 收集表单数据函数 collectSettings
-        // 说明：读取所有页面的表单控件值，组装为 Setting 结构体对应的 JSON 对象，
-        //       用于传递给 C++ 后端的 Start() 和 OnInputfileChanged() 函数。
-        // 返回值：包含以下字段的对象
-        //   - input_file: 输入文件绝对路径（或"未选择文件"）
-        //   - output_file: 输出文件名
-        //   - bitrate: 码率（bps，0 表示 Auto）
-        //   - detect_mode: 检测模式（pixel）
-        //   - speed_1x: 是否一倍速加速
-        //   - bullet_time: 子弹时间加速倍数
-        //   - anim_reserved: 选中动画保留秒数
-        //   - encoder: 编码器选择
-        //   - decoder: 解码器选择
-        // 编辑历史：后续提取为独立函数，供多处复用。
-        // ============================================================
+        // collectSettings：读取所有表单控件值，组装为 Setting JSON 对象
+        // 返回字段：input_file, output_file, bitrate(bps), detect_mode, speed_1x,
+        //          bullet_time, anim_reserved, encoder, decoder
         function collectSettings() {
             const inputFileLabel = document.getElementById('input-file-label');
             const inputFile = inputFileLabel.textContent;
             const outputFile = document.querySelector('#page-start .pill-input').value || inputFile + '_clipped';
             const bitrateValue = document.getElementById('bitrate-value').textContent;
-            const bitrate = (bitrateValue === 'Auto' ? 0 : parseFloat(bitrateValue)) * 1000000;   // Mbps -> bps
+            const bitrate = (bitrateValue === 'Auto' ? 0 : parseFloat(bitrateValue)) * 1000000;
 
-            // 获取策略设置
             const detectMode = document.getElementById('detect-mode')?.value || 'pixel';
             const speed1x = document.getElementById('checkbox-speed')?.checked || false;
             const bulletValue = document.getElementById('bullet-value')?.textContent || '2.0';
             const animValue = document.getElementById('anim-value')?.textContent || '0.3';
 
-            // 获取硬件设置
             const encoder = document.querySelector('#page-hardware select')?.value || 'auto';
             const decoder = document.querySelectorAll('#page-hardware select')[1]?.value || 'dxva2';
 
-            // 组装并返回设置数据
             return {
                 input_file: inputFile,
                 output_file: outputFile,
@@ -1419,26 +1172,9 @@
             };
         }
 
-        // ============================================================
-        // 启动按钮功能
-        // 说明：点击"启动"按钮后的完整处理流程：
-        //       1. 验证输入文件是否已选择（未选择则弹出消息框）
-        //       2. 验证输出文件名是否已设置
-        //       3. 调用 collectSettings() 收集表单数据
-        //       4. 调用 C++ startProcessing(settings) 启动处理线程
-        //       5. 显示进度界面，启动定时轮询获取进度
-        // 进度轮询：每 333ms 调用 getProgressMetrics()，更新：
-        //   - 圆形进度条百分比（通过 stroke-dashoffset）
-        //   - FPS / QD / ETA 指标显示
-        //   - 状态提示文字（根据 WorkState 映射）
-        //   - 错误检测（state=3 时返回主界面并提示）
-        //   - 完成检测（progress>=100 时显示完成状态）
-        // 编辑历史：
-        //   - 初始创建基础进度显示
-        //   - 后续添加指标显示（FPS/QD/ETA）
-        //   - 后续添加错误处理和消息框提示
-        //   - 后续修复完成返回时进度条闪烁问题
-        // ============================================================
+        // 启动按钮功能：验证 → 收集表单 → 调用 startProcessing → 显示进度界面 → 轮询进度
+        // 轮询每 333ms 调用 getProgressMetrics()，更新百分比、FPS/QD/ETA、状态提示。
+        // state=3 时弹出错误消息并返回；progress>=100 时显示完成状态。
         const progressOverlay = document.getElementById('progress-overlay');
         const progressPercentage = document.getElementById('progress-percentage');
         const progressTips = document.getElementById('progress-tips');
@@ -1451,24 +1187,20 @@
         ];
 
         document.getElementById('btn-start').addEventListener('click', async function() {
-            // 检查用户是否选择了文件
             const inputFileLabel = document.getElementById('input-file-label');
             if (inputFileLabel.textContent === '未选择文件') {
                 window.showMessage('请先选择要剪辑的视频文件。');
                 return;
             }
 
-            // 检查用户是否设置了输出文件名
             const outputFileInput = document.querySelector('#page-start .pill-input');
             if (!outputFileInput.value) {
                 window.showMessage('请先设置输出文件名。');
                 return;
             }
 
-            // 收集并发送表单数据
             const settings = collectSettings();
 
-            // 调用 C++ 的 startProcessing 函数
             if (window.startProcessing) {
                 try {
                     await window.startProcessing(settings);
@@ -1478,52 +1210,40 @@
                 }
             }
 
-            // 显示进度界面
             progressOverlay.classList.add('active');
-            // 移除完成状态
             progressOverlay.classList.remove('progress-complete');
 
             let tipIndex = 0;
             progressTips.textContent = tipsList[tipIndex];
 
-            // 工作状态文本映射（对应 C++ WorkState 枚举值）
             const stateTexts = {
                 0: '初始化',
                 1: '正在定位 GUI',
-                2: '正在剪辑暂停',
-                3: '出现错误'
+                2: '正在剪辑暂停'
             };
 
-            // 每0.333秒获取一次进度
             const metricsInterval = setInterval(async function() {
                 if (!window.getProgressMetrics) return;
-                
+
                 try {
                     const metrics = await window.getProgressMetrics();
                     if (metrics) {
-                        // 检查是否有错误（state = 3，对应 sError）
-                        if (metrics.state === 3) {  // ERROR
+                        if (metrics.errors && metrics.errors.length) {
                             clearInterval(metricsInterval);
                             clearInterval(tipsInterval);
-                            // 隐藏进度界面
                             progressOverlay.classList.remove('active');
                             progressOverlay.classList.remove('progress-complete');
-                            // 显示错误消息
-                            window.showMessage('处理失败：' + metrics.errorMessage);
+                            window.showMessage('处理失败：' + metrics.errors[0]);
                             return;
                         }
-                        
-                        // 更新工作状态提示
+
                         const stateText = stateTexts[metrics.state] || '处理中';
                         progressTips.textContent = stateText + '...';
-                        
-                        // 更新进度百分比
                         progressPercentage.textContent = metrics.progress.toFixed(1) + '%';
-                        
-                        // 更新指标
+
                         document.getElementById('metric-fps').textContent = metrics.fps.toFixed(1);
                         document.getElementById('metric-qd').textContent = metrics.qd;
-                        // 格式化 ETA 显示（秒 -> 分秒 / 时分秒）
+
                         const eta = metrics.eta;
                         let etaStr = '';
                         if (eta <= 60) {
@@ -1540,14 +1260,12 @@
                         }
                         document.getElementById('metric-eta').textContent = etaStr;
 
-                        // 检查是否完成
                         if (metrics.progress >= 100) {
                             clearInterval(metricsInterval);
                             showCompleteState();
                         }
                     }
                 } catch (err) {
-                    // 处理错误
                     window.showMessage('获取进度失败: ' + err.message);
                     clearInterval(metricsInterval);
                     clearInterval(tipsInterval);
@@ -1557,7 +1275,6 @@
                 }
             }, 333);
 
-            // 每15秒切换一次tips（当前已注释禁用）
             // const tipsInterval = setInterval(function() {
             //     tipIndex++;
             //     if (tipIndex < tipsList.length) {
@@ -1565,41 +1282,21 @@
             //     }
             // }, 15000);
 
-            // 保存interval ID用于清理
             progressOverlay.dataset.metricsInterval = metricsInterval;
             progressOverlay.dataset.tipsInterval = tipsInterval;
         });
 
-        // ============================================================
-        // 显示完成状态函数 showCompleteState
-        // 说明：当处理进度达到 100% 时调用，切换进度界面到完成状态：
-        //       - 隐藏进度条和指标区域
-        //       - 显示"完成"大字和返回按钮
-        //       - 更新提示文字为输出文件名
-        // ============================================================
+        // 显示完成状态：隐藏进度条和指标，显示"完成"文字和输出文件名
         function showCompleteState() {
-            // 获取输出文件名
             const outputFileName = document.querySelector('#page-start .pill-input').value || '未命名文件';
-
-            // 切换到完成状态
             progressOverlay.classList.add('progress-complete');
-
-            // 更新tips显示保存的文件名
             progressTips.textContent = '已保存至：' + outputFileName;
         }
 
-        // ============================================================
-        // 返回按钮功能
-        // 说明：点击"返回"按钮后：
-        //       1. 清理进度轮询 interval
-        //       2. 移除进度界面 .active 类触发淡出动画
-        //       3. 等待 500ms（动画时长）后移除 .progress-complete 类
-        //          避免返回瞬间进度条闪烁
-        // 编辑历史：后续添加 setTimeout 延迟移除 progress-complete，
-        //       解决返回时进度条和完成文字瞬间闪现的问题。
-        // ============================================================
+        // 返回按钮：清理 interval → 移除 .active 触发淡出 → 延迟 500ms 移除 .progress-complete
+        // 注意：如果不延迟移除 .progress-complete，淡出动画与状态切换同时发生会导致
+        // 进度条和完成文字瞬间闪现（两个动画叠加导致）。
         document.getElementById('btn-back').addEventListener('click', function() {
-            // 清理interval
             if (progressOverlay.dataset.metricsInterval) {
                 clearInterval(parseInt(progressOverlay.dataset.metricsInterval));
             }
@@ -1607,74 +1304,52 @@
                 clearInterval(parseInt(progressOverlay.dataset.tipsInterval));
             }
 
-            // 隐藏界面
             progressOverlay.classList.remove('active');
-            
-            // 等待淡出动画完成后，再移除完成状态
+
             setTimeout(function() {
                 progressOverlay.classList.remove('progress-complete');
             }, 500);
         });
 
-        // ============================================================
-        // 消息框系统
-        // 说明：全局消息框，替代原生 alert 和 confirm。
-        //       通过 window.showMessage(text) 全局函数调用。
-        // 元素：
-        //   - messageOverlay: 半透明遮罩层（z-index 1199）
-        //   - messageBox: 消息框主体（z-index 1200）
-        //   - messageText: 消息内容
-        //   - messageConfirm: "确认"按钮
-        // 交互：点击确认按钮或遮罩层均可关闭消息框。
-        // 编辑历史：后续添加，用于统一错误提示和用户通知。
-        // ============================================================
+        // 消息框系统：window.showMessage(text) 显示，window.hideMessage() 关闭
         const messageOverlay = document.getElementById('message-overlay');
         const messageBox = document.getElementById('message-box');
         const messageText = document.getElementById('message-text');
         const messageConfirm = document.getElementById('message-confirm');
 
-        // 显示消息框函数（全局暴露，供 C++ 和 JS 调用）
         window.showMessage = function(text) {
             messageText.textContent = text;
             messageOverlay.classList.add('active');
             messageBox.classList.add('active');
         };
 
-        // 关闭消息框函数
         window.hideMessage = function() {
             messageOverlay.classList.remove('active');
             messageBox.classList.remove('active');
         };
 
-        // 确认按钮点击事件
         messageConfirm.addEventListener('click', function() {
             window.hideMessage();
         });
 
-        // 点击遮罩层也可以关闭消息框
         messageOverlay.addEventListener('click', function() {
             window.hideMessage();
         });
 
-        // ============================================================
-        // 主界面分析进度监控
-        // 说明：页面加载后立即启动的定时器，每 333ms 轮询一次后端状态。
-        //       当 WorkState 为 1（sLocating，正在定位 GUI）时，
-        //       显示启动按钮右侧的小型分析进度条和"分析中 ..."标签。
-        //       其他状态或处理完成时隐藏。
-        // 编辑历史：
-        //   - 后续添加，用于实时反映后端预分析状态
-        //   - 后续改为与按钮一起隐藏/显示（移除单独控制）
-        //   - 后续尺寸从 48x48 缩小为 40x40
-        // ============================================================
+        // 主界面分析进度监控：每 333ms 轮询后端状态，state=1(sLocating) 时显示小型进度条
         const analysisProgress = document.getElementById('analysis-progress');
         let mainInterval = setInterval(async function() {
             if (!window.getProgressMetrics) return;
-            
+
             try {
                 const metrics = await window.getProgressMetrics();
                 if (metrics) {
-                    // state = 1 (sLocating) 时显示分析进度
+                    if (metrics.errors && metrics.errors.length) {
+                        const overlay = document.getElementById('progress-overlay');
+                        if (overlay) overlay.classList.remove('active');
+                        window.showMessage('处理失败：' + metrics.errors[0]);
+                        return;
+                    }
                     if (metrics.state === 1) {
                         analysisProgress.classList.add('active');
                     } else {
@@ -1686,22 +1361,12 @@
             }
         }, 333);
 
-        // ============================================================
-        // 禁用右键菜单
-        // 说明：阻止默认 contextmenu 事件，禁用整个页面的右键菜单。
-        // 编辑历史：后续添加，避免桌面应用中显示浏览器右键菜单。
-        // ============================================================
+        // 禁用右键菜单、鼠标滚轮滚动、scroll 事件、触摸滚动
         document.addEventListener('contextmenu', function(e) {
             e.preventDefault();
             return false;
         });
 
-        // ============================================================
-        // 禁用所有滚动
-        // 说明：阻止 wheel、scroll、touchmove 事件，确保桌面应用界面固定。
-        //       scroll 事件中强制滚动回顶部。
-        // 编辑历史：后续添加，配合 overflow:hidden 确保无滚动。
-        // ============================================================
         document.addEventListener('wheel', function(e) {
             e.preventDefault();
             return false;
@@ -1713,7 +1378,6 @@
             return false;
         });
 
-        // 禁用触摸设备上的滚动
         document.addEventListener('touchmove', function(e) {
             e.preventDefault();
             return false;

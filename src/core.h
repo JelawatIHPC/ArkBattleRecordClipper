@@ -7,8 +7,7 @@
 enum class WorkState {
     sIdle = 0,       // 空闲
     sLocating = 1,   // 定位（Start中的第一轮）
-    sClipping = 2,   // 剪辑（Start中的第二轮）
-    sError = 3       // 错误
+    sClipping = 2    // 剪辑（Start中的第二轮）
 };
 
 struct Setting {
@@ -50,13 +49,21 @@ struct ProgressMetrics {
     int eta_seconds = 0;
 };
 
+
+/**
+ * @brief 启动处理流程
+ * 
+ * @param setting 配置参数
+ */
 void Start(const Setting& setting);
+
 
 /** @brief 当输入文件改变时，调用该函数通知预分析器
  * 
  * @param setting 配置参数
  */
 void OnInputfileChanged(const Setting& setting);
+
 
 /**
  * @brief 获取当前进度指标
