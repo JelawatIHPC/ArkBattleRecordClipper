@@ -7,10 +7,6 @@
 #include <span>
 #include <stdexcept>
 
-#ifdef _DEBUG
-#include <fstream>
-#endif
-
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -21,11 +17,11 @@ extern "C" {
 #include <libswscale/swscale.h>
 }
 
-#include "ACEncoder.h"
-#include "ACDecoder.h"
-#include "ACDetector.h"
-#include "ACMemory.h"
-#include "ACLocator.h"
+#include "encoder.h"
+#include "decoder.h"
+#include "detector.h"
+#include "memory.h"
+#include "locator.h"
 #include "core.h"
 
 #define POW2(x) ((x)*(x))
@@ -220,15 +216,16 @@ public:
      * 
      * 阻塞等待当前预分析完成并返回定位结果。
      * 
-     * @return LocatorResult 定位结果
+     * @return LocateResult 定位结果
      * 
      * @throw std::runtime_error 预分析失败或未完成时抛出
     */
-    LocatorResult GetResult() {
+    LocateResult GetResult() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (!future_.valid()) throw std::runtime_error("预分析尚未开始, 请先选择输入文件");
-        LocatorResult result = future_.get();
-        if (result.score < 0.95) throw std::runtime_error("预分析未完成, 请重新选择输入文件");
+        LocateResult result = future_.get();
+        if (result.locator1.box.empty() || result.locator2.box.empty())
+            throw std::runtime_error("预分析未完成, 请重新选择输入文件");
         return result;
     }
 
@@ -245,24 +242,27 @@ private:
      * @param setting 输入文件配置
      * @param generation 本次分析的世代号, 检测到世代号过期时放弃本次分析
      * 
-     * @return LocatorResult 定位结果, 分析被取消时返回 score 为 0 的空结果
+     * @return LocateResult 定位结果, 分析被取消时返回两个 box 均为空的结果
     */
-    LocatorResult Analyse(const Setting& setting, int generation) {
+    LocateResult Analyse(const Setting& setting, int generation) {
         ProgressMetrics metrics = MetricsSnapshot();
         metrics.state = WorkState::sLocating;
         MetricsStore(metrics);
 
         ACDecoder decoder(setting.input_filename, ACDecoder::Codec::DXVA2);
-        ACLocator locator(setting.locator_filename);
+        ACLocator locator(setting.locator_filename, setting.locator2_filename);
         decoder.Seek(20);
+
+        // 两个模板各自的有效定位结果集合
+        std::vector<LocatorResult> results1, results2;
 
         ACMsTimer timer{ DISPLAY_INTERVAL_MS };
 
         for (int frame_count = 0; AVFrame* decoded_frame = decoder.Decode(); frame_count++) {
             // 输入文件已切换, 放弃本次分析
-            if (generation != current_.load()) return LocatorResult{};
+            if (generation != current_.load()) return LocateResult{};
 
-            LocatorResult new_result = locator.Locate(decoded_frame);
+            LocateResult new_result = locator.Locate(decoded_frame);
 
             // 定位阶段进度更新
             metrics = MetricsSnapshot();
@@ -272,18 +272,25 @@ private:
             metrics.eta_seconds = 0;
             MetricsStore(metrics);
 
-            if (new_result.score < 0.95) continue;
+            // 收集有效定位结果 (box 为空说明该帧没有对应模板)
+            if (!new_result.locator1.box.empty()) results1.push_back(new_result.locator1);
+            if (!new_result.locator2.box.empty()) results2.push_back(new_result.locator2);
 
-            // 定位完成, 恢复空闲状态
-            MetricsSetState(WorkState::sIdle);
-            return new_result;
+            // 两个模板都有至少 1 个有效结果, 求平均减小误差后结束定位阶段
+            if (!results1.empty() && !results2.empty()) {
+                MetricsSetState(WorkState::sIdle);
+                return {
+                    LocatorResult::Mean(results1),
+                    LocatorResult::Mean(results2)
+                };
+            }
         }
         throw std::runtime_error("无法定位到输入视频中的暂停按钮");
     }
 
     std::mutex mutex_;
     std::atomic<int> current_{ 0 };
-    std::future<LocatorResult> future_;
+    std::future<LocateResult> future_;
 };
 
 /**
@@ -389,8 +396,8 @@ void Start(const Setting& setting) {
         prior_decoder = DECODER_MAP.at(setting.decoder);
     }
 
-    // 第一轮：等待预分析完成, 获取暂停按钮定位结果
-    LocatorResult detect_result = g_analyser.GetResult();
+    // 第一轮：等待预分析完成, 获取两个暂停按钮定位结果
+    LocateResult detect_result = g_analyser.GetResult();
 
     // 计时器
     ACMsTimer timer{ DISPLAY_INTERVAL_MS };
@@ -401,7 +408,7 @@ void Start(const Setting& setting) {
         setting.input_filename, prior_decoder
     };
     PixelDetector detector {
-        detect_result.box
+        detect_result.locator1.box, detect_result.locator2.box
     };
     ACEncoder output {
         setting.output_filename, &input, prior_encoder, ACEncoder::Format::NV12, setting.output_bitrate > 0 ? setting.output_bitrate : input.GetAvgBitrate()
@@ -410,11 +417,6 @@ void Start(const Setting& setting) {
         input.GetFormat(), output.GetFormat(), input.GetWidth(), input.GetHeight()
     };
 
-#ifdef _DEBUG
-    std::ofstream debug_file;
-    debug_file.open("Detect-Debug.txt", std::ios::out);
-#endif
-    
     // 当暂停在选中/未选中干员间切换时, 会保留 select_pause_reserved_time (单位: 秒) 的过渡动画不被剪去
     // 该值决定了剪暂停过程中的 "滑动窗口长度", 只有窗口内的帧会在内存中。
     int64_t reserved_pts = (int64_t)ceil(av_q2d(av_inv_q(input.GetTimebase())) * setting.select_pause_reserved_time);
@@ -498,10 +500,6 @@ void Start(const Setting& setting) {
                 .state    = detector.Detect(decoded_frame),
             });
             pts_indexing[decoded_frame->pts] = frame_array.size() - 1;
-#ifdef _DEBUG
-            auto sec = av_rescale_q(frame_array.back().frame->pts, input.GetTimebase(), AVRational{ 1,1 });
-            debug_file << std::format("{:02}:{:02} {}\n", sec / 60, sec % 60, FrameStateStr(frame_array.back().state));
-#endif
         }
 
         // 选中/未选中的切换动画 [ CMT_PTS - R_PTS, CMT_PTS + R_PTS ]
@@ -539,10 +537,6 @@ void Start(const Setting& setting) {
         metrics.eta_seconds = (int)((input.GetFrameCount() - frame_array.size()) / metrics.frames_per_second * 1.025f);
         MetricsStore(metrics);
     }
-
-#ifdef _DEBUG
-    debug_file.close();
-#endif
 
     // 写入文件尾
     output.Close();

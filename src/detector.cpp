@@ -1,11 +1,15 @@
-﻿#include "ACDetector.h"
+﻿#include "detector.h"
 #include "opencv2/core/types.hpp"
+#include <algorithm>
 #include <stdexcept>
+#include <vector>
+#include <cstring>
 
 /* 平方 */
 #define POW2(x) ((x)*(x))
 
-Detector::Detector(cv::Rect detect_region) {
+Detector::Detector(cv::Rect detect_region1, cv::Rect detect_region2)
+    : detect_region1(detect_region1), detect_region2(detect_region2) {
 }
 
 Detector::~Detector() {
@@ -50,18 +54,58 @@ bool PixelDetector::Activated(const AVFrame* frame, std::pair<int, int>& coord) 
     return (r > 145 && g > 145 && b > 145);
 }
 
-PixelDetector::PixelDetector(cv::Rect detect_region) : Detector(detect_region) {
-    double origin_x = detect_region.x + detect_region.width / 2.0;
-    double origin_y = detect_region.y + detect_region.height / 2.0;
-    double width = detect_region.width;
+PixelDetector::PixelDetector(cv::Rect detect_region1, cv::Rect detect_region2)
+    : Detector(detect_region1, detect_region2) {
+    // 检测点 0/3/4 相对第一个模板 (locator.png) 的矩形区域计算
+    double origin_x = detect_region1.x + detect_region1.width / 2.0;
+    double origin_y = detect_region1.y + detect_region1.height / 2.0;
+    double width = detect_region1.width;
     detect_points[0] = { (int)round(origin_x), (int)round(origin_y) };
-    detect_points[1] = { (int)round(origin_x + -2.9778 * width), (int)round(origin_y +  0.3889 * width) };
-    detect_points[2] = { (int)round(origin_x + -2.6667 * width), (int)round(origin_y +  0.3889 * width) };
     detect_points[3] = { (int)round(origin_x +  0.2333 * width), (int)round(origin_y + -0.2500 * width) };
     detect_points[4] = { (int)round(origin_x +  0.3333 * width), (int)round(origin_y +  0.2500 * width) };
+
+    // 检测点 1/2 相对第二个模板 (locator2.png) 的矩形区域计算
+    origin_x = detect_region2.x + detect_region2.width / 2.0;
+    origin_y = detect_region2.y + detect_region2.height / 2.0;
+    width = detect_region2.width;
+    detect_points[1] = { (int)round(origin_x + -0.3333 * width), (int)round(origin_y + -0.0208 * width) };
+    detect_points[2] = { (int)round(origin_x +  0.0625 * width), (int)round(origin_y + -0.0208 * width) };
 }
 
 PixelDetector::~PixelDetector() {
+}
+
+/* 把 NV12 帧 (考虑 linesize 对齐) 拷贝为紧凑布局后转 BGR, 绘制两个定位区域与 5 个检测点。
+ */
+void PixelDetector::Visualize(const AVFrame* frame) const {
+    std::vector<uint8_t> nv12_data((size_t)frame->width * frame->height * 3 / 2);
+    for (int row = 0; row < frame->height; ++row)
+        memcpy(nv12_data.data() + (size_t)row * frame->width,
+               frame->data[0] + (size_t)row * frame->linesize[0], frame->width);
+    for (int row = 0; row < frame->height / 2; ++row)
+        memcpy(nv12_data.data() + (size_t)frame->width * frame->height + (size_t)row * frame->width,
+               frame->data[1] + (size_t)row * frame->linesize[1], frame->width);
+
+    cv::Mat nv12((int)(frame->height * 3 / 2), frame->width, CV_8UC1, nv12_data.data());
+    cv::Mat bgr;
+    cv::cvtColor(nv12, bgr, cv::COLOR_YUV2BGR_NV12);
+
+    cv::rectangle(bgr, detect_region1, cv::Scalar(0, 255, 0), 1);    // 模板 1: 绿色
+    cv::rectangle(bgr, detect_region2, cv::Scalar(255, 0, 0), 1);    // 模板 2: 蓝色
+    for (int i = 0; i < 5; ++i) {
+        cv::circle(bgr, cv::Point(detect_points[i].first, detect_points[i].second), 1, cv::Scalar(0, 0, 255), 1);   // 检测点: 红色
+    }
+
+    // 超出窗口上限 (1440x900) 时等比缩小, 保证整个画面和检测点都可见
+    constexpr double MAX_W = 1440.0;
+    constexpr double MAX_H = 900.0;
+    cv::Mat display = bgr;
+    if (bgr.cols > MAX_W || bgr.rows > MAX_H) {
+        double scale = std::min(MAX_W / bgr.cols, MAX_H / bgr.rows);
+        cv::resize(bgr, display, cv::Size(), scale, scale, cv::INTER_AREA);
+    }
+    cv::imshow("PixelDetector", display);
+    cv::waitKey(1);
 }
 
 FrameState PixelDetector::Detect(const AVFrame* frame)
@@ -72,19 +116,23 @@ FrameState PixelDetector::Detect(const AVFrame* frame)
          D3 = Activated(frame, detect_points[3]),
          D4 = Activated(frame, detect_points[4]);
 	
+    FrameState state;
     if (D2) {
-        if (D3 && D4 && !D0)  return D1 ? FrameState::PLAY_2X : FrameState::PLAY;
-        if (!D3 && !D4 && D0) return FrameState::PAUSE;
-        return FrameState::UNDEFINED;
+        if (D3 && D4 && !D0) state = D1 ? FrameState::PLAY_2X : FrameState::PLAY;
+        else if (!D3 && !D4 && D0) state = FrameState::PAUSE;
+        else state = FrameState::UNDEFINED;
     }
-    if (D1) return FrameState::UNDEFINED;
-    if (D3 && D4 && !D0)  return FrameState::SELECT;
-    if (!D3 && !D4 && D0) return FrameState::SELECT_PAUSE;
-    if (!(D0 || D1 || D2 || D3 || D4)) return FrameState::DEPLOY;
-    return FrameState::UNDEFINED;
+    else if (D1) state = FrameState::UNDEFINED;
+    else if (D3 && D4 && !D0)  state = FrameState::SELECT;
+    else if (!D3 && !D4 && D0) state = FrameState::SELECT_PAUSE;
+    else if (!(D0 || D1 || D2 || D3 || D4)) state = FrameState::DEPLOY;
+    else state = FrameState::UNDEFINED;
+
+    return state;
 }
 
-SimilarityDetector::SimilarityDetector(cv::Rect detect_region, const std::string& locator_filename) : Detector(detect_region) {
+SimilarityDetector::SimilarityDetector(cv::Rect detect_region1, cv::Rect detect_region2, const std::string& locator_filename)
+    : Detector(detect_region1, detect_region2) {
     // 读取暂停按钮图片
     cv::Mat locator_img = cv::imread(locator_filename, cv::IMREAD_COLOR);
     if (locator_img.empty()) {

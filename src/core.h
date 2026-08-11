@@ -15,6 +15,7 @@ struct Setting {
     std::string input_filename;
     std::string output_filename;
     std::string locator_filename;
+    std::string locator2_filename;
     
     // 输出比特率, 0 表示使用输入视频的平均比特率
     int64_t output_bitrate = 0;

@@ -57,6 +57,7 @@ Setting ParseSetting(const std::string& req) {
   current_dir = current_dir.substr(0, current_dir.find_last_of("\\"));
   
   setting.locator_filename = current_dir + "/assets/locator.png";
+  setting.locator2_filename = current_dir + "/assets/locator2.png";
   
   try {
     // 我也不知道为什么 webview 弄过来的 json 还套了一层数组
@@ -208,7 +209,6 @@ int main() {
         std::vector<char> utf8Path(utf8Len);
         WideCharToMultiByte(CP_UTF8, 0, filePath, -1, utf8Path.data(), utf8Len, nullptr, nullptr);
         std::string result(utf8Path.data());
-        printf("Selected file: %s\n", result.c_str());
         // 转义反斜杠为双反斜杠
         size_t pos = 0;
         while ((pos = result.find('\\', pos)) != std::string::npos) {

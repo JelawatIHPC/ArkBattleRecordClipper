@@ -8,7 +8,7 @@
 #include <libswscale/swscale.h>
 }
 
-#include "ACDecoder.h"
+#include "decoder.h"
 
 /* FFmpeg 编码器封装, 根据输入视频的参数来初始化, 接收 AVFrame 并完成编码和写入文件工作。
 */

@@ -1,5 +1,5 @@
 set_xmakever("3.0.6")
-set_version("0.1.0")
+set_version("0.1.2")
 includes("@builtin/xpack")
 
 -- Add require FFmpeg
@@ -49,13 +49,11 @@ target("core")
     before_run(function (target) 
         os.cp("$(projectdir)/assets", target:targetdir())
         os.cp("$(projectdir)/ui", target:targetdir())
-        os.cp("$(projectdir)/input.mp4", target:targetdir())
     end)
 
     after_clean(function (target) 
         os.rm(target:targetdir() .. "/assets")
         os.rm(target:targetdir() .. "/ui")
-        os.rm(target:targetdir() .. "/*.mp4")
     end)
 
 xpack("core")
@@ -92,13 +90,16 @@ package("mswebview2")
     set_kind("library")
     set_homepage("https://aka.ms/webview")
     set_description("The WebView2 control enables you to embed web technologies (HTML, CSS, and JavaScript) in your native applications powered by Microsoft Edge (Chromium).")
-    set_license("https://www.nuget.org/packages/Microsoft.Web.WebView2/$(version)/License")
+    set_license("https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.4078.44/License")
 
-    add_urls("https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/$(version)#pkg.zip")  -- Hook xmake to consider .nupkg as .zip
-    add_versions("1.0.3800.47", "56c9f26bdd07916a2d1949fb58a5c7e434dfa1173577dca879206050c4e718db")
+    add_urls("https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.4078.44#pkg.zip")  -- Hook xmake to consider .nupkg as .zip
+    add_versions("1.0", "dc4d1d9168df26b830398303e50210b6e1729f6ce5a7ac69d2c766852f489962")      -- Xmake reject non-semver version, freeze it into url
     
     on_install(function (package)
         os.cp("build/native/include", package:installdir())
+        if is_plat("windows") and package:is_arch("x64") then
+            os.cp("build/native/x64/*", package:installdir("bin"))
+        end
     end)
 package_end()
 
@@ -112,7 +113,7 @@ package("webview")
     add_versions("0.11.0", "ca3ea702596fec8d6b8aee2bbcb7edeeb95a3d85f61acccb4e6d11a22fa9598e")
     
     if is_plat("windows") then
-        add_deps("mswebview2 1.0.3800.47")
+        add_deps("mswebview2 1.0")
     end
 
     on_install("windows", function (package)
