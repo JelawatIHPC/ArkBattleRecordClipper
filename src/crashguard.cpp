@@ -64,6 +64,10 @@ LONG WINAPI CrashFilter(EXCEPTION_POINTERS* ep) {
     }
 
     if (g_log_handle == INVALID_HANDLE_VALUE) {
+        /* 崩溃时才打开日志文件, 正常运行时 crash.log 不应存在 */
+        OpenLogFile();
+    }
+    if (g_log_handle == INVALID_HANDLE_VALUE) {
         /* 日志都开不出来, 没有任何可做的事, 直接退出 */
         ExitProcess(0xAC000001);
     }
@@ -178,11 +182,11 @@ void InstallCrashGuard() {
     /* 关闭 Windows 默认的崩溃弹窗, 避免崩溃后 UI 卡死等待用户 */
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 
+    /* 只缓存 exe 目录; crash.log 延迟到真正崩溃时再打开, 正常运行不产生日志文件 */
     if (GetModuleFileNameW(nullptr, g_exe_dir, MAX_PATH) > 0) {
         wchar_t* slash = wcsrchr(g_exe_dir, L'\\');
         if (slash != nullptr) {
             *slash = L'\0';
-            OpenLogFile();
         }
     }
 

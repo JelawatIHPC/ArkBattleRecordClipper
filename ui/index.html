@@ -1291,6 +1291,26 @@
             const outputFileName = document.querySelector('#page-start .pill-input').value || '未命名文件';
             progressOverlay.classList.add('progress-complete');
             progressTips.textContent = '已保存至：' + outputFileName;
+            // 处理完成, 清空启动页设置: 输入/输出/码率
+            // 否则界面残留旧设置, 用户再次点击启动会因预分析结果已被消费而报"预分析未开始"
+            resetStartPageSettings();
+        }
+
+        // 清空启动页的设置: 输入文件 / 输出文件名 / 码率
+        function resetStartPageSettings() {
+            const inputFileLabel = document.getElementById('input-file-label');
+            if (inputFileLabel) inputFileLabel.textContent = '未选择文件';
+
+            const outputInput = document.querySelector('#page-start .pill-input');
+            if (outputInput) outputInput.value = '';
+
+            const slider = document.getElementById('bitrate-slider');
+            if (slider) {
+                slider.value = '0';
+                const valueEl = document.getElementById('bitrate-value');
+                if (valueEl) valueEl.textContent = 'Auto';
+                updateBitrateSlider();
+            }
         }
 
         // 返回按钮：清理 interval → 移除 .active 触发淡出 → 延迟 500ms 移除 .progress-complete
