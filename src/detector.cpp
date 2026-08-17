@@ -17,6 +17,7 @@ Detector::~Detector() {
 
 /* 检测 AVFrame 的某坐标点是否为亮白色, 是则视为该点激活。
    暂停检测的基础算法。
+   NV12: UV 平面交错存储 (U, V) 成对; YUV420P: U / V 平面分离。
 */
 bool PixelDetector::Activated(const AVFrame* frame, std::pair<int, int>& coord) {
     int& x = coord.first;
@@ -31,9 +32,17 @@ bool PixelDetector::Activated(const AVFrame* frame, std::pair<int, int>& coord) 
     // Get UV components (shared for 2x2 block)
     int uv_x = x / 2;
     int uv_y = y / 2;
-    int uv_index = uv_y * frame->linesize[1] + uv_x * 2;
-    uint8_t U = frame->data[1][uv_index];
-    uint8_t V = frame->data[1][uv_index + 1];
+    uint8_t U, V;
+    if (pixel_format == AV_PIX_FMT_NV12) {
+        int uv_index = uv_y * frame->linesize[1] + uv_x * 2;
+        U = frame->data[1][uv_index];
+        V = frame->data[1][uv_index + 1];
+    }
+    else {
+        // YUV420P
+        U = frame->data[1][uv_y * frame->linesize[1] + uv_x];
+        V = frame->data[2][uv_y * frame->linesize[2] + uv_x];
+    }
 
     // Convert YUV to RGB
     int y1192 = 1192 * (Y - 16);
@@ -54,8 +63,13 @@ bool PixelDetector::Activated(const AVFrame* frame, std::pair<int, int>& coord) 
     return (r > 145 && g > 145 && b > 145);
 }
 
-PixelDetector::PixelDetector(cv::Rect detect_region1, cv::Rect detect_region2)
-    : Detector(detect_region1, detect_region2) {
+PixelDetector::PixelDetector(cv::Rect detect_region1, cv::Rect detect_region2, AVPixelFormat format)
+    : Detector(detect_region1, detect_region2), pixel_format(format) {
+    
+    if (format != AV_PIX_FMT_NV12 && format != AV_PIX_FMT_YUV420P) {
+        throw std::runtime_error("Pixel Detector 不支持此像素格式。");
+    }
+
     // 检测点 0/3/4 相对第一个模板 (locator.png) 的矩形区域计算
     double origin_x = detect_region1.x + detect_region1.width / 2.0;
     double origin_y = detect_region1.y + detect_region1.height / 2.0;
@@ -110,6 +124,10 @@ void PixelDetector::Visualize(const AVFrame* frame) const {
 
 FrameState PixelDetector::Detect(const AVFrame* frame)
 {
+    if (frame->format != pixel_format) {
+        throw std::runtime_error("视频流中出现了 Pixel Detector 不支持的像素格式。");
+    }
+
     bool D0 = Activated(frame, detect_points[0]),
          D1 = Activated(frame, detect_points[1]),
          D2 = Activated(frame, detect_points[2]),

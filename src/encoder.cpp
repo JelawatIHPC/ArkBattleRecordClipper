@@ -124,8 +124,6 @@ bool ACEncoder::Encode(AVFrame* frame, float speed) {
         throw std::runtime_error("编码器接收到的视频帧格式与预设不符");
     }
 
-    static double remainder = 0;       // 帧加速余项 (单位: 秒)
-
     // 帧采样策略: 当传入视频帧要求加速时, 并不实际减少帧的持续时间, 而是把减少的时间存进 remainder
     // 当传入新的视频帧加速后的持续时间小于 remainder 时, 丢弃该帧, 并扣除相应 remainder
     if (speed > 1.0f) {
