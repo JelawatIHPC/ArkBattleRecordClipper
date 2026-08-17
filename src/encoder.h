@@ -60,4 +60,6 @@ private:
 
     int64_t          pts{ 0 };
     std::string      codec_name;
+
+    double           remainder{ 0 };   // 帧加速余项 (单位: 秒), 每次构造重置为 0
 };

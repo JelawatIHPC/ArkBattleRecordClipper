@@ -21,6 +21,7 @@ build/
 .github/copilot/
 .idea/
 .trae/
+docs/
 AGENTS.md
 
 # Compiled / library files

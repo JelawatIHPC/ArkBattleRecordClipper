@@ -353,19 +353,13 @@ bool CheckPlayingAnimation(const std::span<DetectedFrame>& seq, size_t C)
     return false;
 }
 
-// 启动互斥锁
-static std::mutex g_start_mutex;
+// 启动互斥锁已移至 main.cpp 管理 (锁定/解锁覆盖整个处理周期, 异常路径也释放)
 // 预分析器
 static PreAnalyser g_analyser;
 
 
 void Start(const Setting& setting) {
     
-    if (g_start_mutex.try_lock() == false) {
-        throw std::runtime_error("重复启动");
-        return;
-    }
-
     // 编码器字符串到枚举的映射
     const std::unordered_map<std::string, ACEncoder::Codec> ENCODER_MAP = {
         { "auto", ACEncoder::Codec::AUTO },
@@ -408,7 +402,7 @@ void Start(const Setting& setting) {
         setting.input_filename, prior_decoder
     };
     PixelDetector detector {
-        detect_result.locator1.box, detect_result.locator2.box
+        detect_result.locator1.box, detect_result.locator2.box, input.GetFormat()
     };
     ACEncoder output {
         setting.output_filename, &input, prior_encoder, ACEncoder::Format::NV12, setting.output_bitrate > 0 ? setting.output_bitrate : input.GetAvgBitrate()
@@ -466,8 +460,8 @@ void Start(const Setting& setting) {
 
     for (; next_commit_idx < frame_array.size(); next_commit_idx++) {
 
-        // 当前准备判定的帧
-        DetectedFrame& cmt_frame = frame_array[next_commit_idx];
+        // 当前准备判定的帧, 拷贝避免 emplace_back 触发扩容使引用失效
+        DetectedFrame cmt_frame = frame_array[next_commit_idx];
 
         // 解码新视频帧, 直到满足检测 next_commit_idx 所需的前后区间为止
         while (!video_end_flag && 
@@ -527,6 +521,7 @@ void Start(const Setting& setting) {
 
         // 已提交, 释放帧内存
         ACFramePool::DefaultPool().Free(cmt_frame.frame);
+        frame_array[next_commit_idx].frame = nullptr;
         cmt_frame.frame = nullptr;
 
         // 更新全局进度指标
@@ -548,7 +543,6 @@ void Start(const Setting& setting) {
     metrics.eta_seconds = 0;
     metrics.state = WorkState::sIdle;
     MetricsStore(metrics);
-    g_start_mutex.unlock();
 }
 
 void OnInputfileChanged(const Setting& setting) {

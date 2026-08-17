@@ -14,11 +14,13 @@
 #include <string>
 #include <vector>
 #include <thread>
+#include <mutex>
 
 #include <webview/webview.h>
 #include <nlohmann/json.hpp>
 
 #include "errors.h"
+#include "crashguard.h"
 
 // 窗口尺寸常量
 constexpr int WINDOW_WIDTH = 864;
@@ -39,6 +41,9 @@ static POINT dragStartCursorPos;
 static POINT dragStartWindowPos;
 static HWND g_hwnd = nullptr;
 
+// 处理互斥锁: 启动前锁定, 处理线程结束或抛异常后释放 (防止异常路径锁泄漏导致永久"重复启动")
+static std::mutex g_start_mutex;
+
 // MSVC 隐藏控制台窗口
 #ifdef _MSVC_STL_VERSION
 #pragma comment(linker, "/subsystem:windows /entry:mainCRTStartup")
@@ -50,10 +55,16 @@ Setting ParseSetting(const std::string& req) {
   
   // 创建 Setting 结构体
   Setting setting;
-  // 获取当前工作目录
-  char current_path[4096];
-  GetModuleFileName(NULL, current_path, 4096);
-  std::string current_dir = current_path;
+  // 获取当前工作目录: 必须使用 Wide API 并将 GBK 字节转换为 UTF-8
+  wchar_t current_path[4096];
+  GetModuleFileNameW(NULL, current_path, 4096);
+  std::string current_dir;
+  int utf8_len = WideCharToMultiByte(CP_UTF8, 0, current_path, -1, nullptr, 0, nullptr, nullptr);
+  if (utf8_len > 0) {
+    std::vector<char> utf8_path(utf8_len);
+    WideCharToMultiByte(CP_UTF8, 0, current_path, -1, utf8_path.data(), utf8_len, nullptr, nullptr);
+    current_dir = std::string(utf8_path.data());
+  }
   current_dir = current_dir.substr(0, current_dir.find_last_of("\\"));
   
   setting.locator_filename = current_dir + "/assets/locator.png";
@@ -87,6 +98,9 @@ Setting ParseSetting(const std::string& req) {
  * @return int 程序退出码，0 表示正常退出
  */
 int main() {
+  // SEH Mechanism: crash.log & minidump
+  InstallCrashGuard();
+
   // 创建 webview 实例
   webview::webview w(true, nullptr);
   
@@ -240,7 +254,13 @@ int main() {
       ACErrors().Post(e.what());
       return "false";
     }
-    
+
+    // 启动前锁定互斥锁, 已有处理进行中则拒绝本次启动
+    if (g_start_mutex.try_lock() == false) {
+      ACErrors().Post("重复启动");
+      return "false";
+    }
+
     // 在新线程中启动处理
     std::thread processingThread([setting]() {
       try {
@@ -256,6 +276,8 @@ int main() {
         // 捕获未知异常
         ACErrors().Post("未知错误");
       }
+      // 处理结束或抛异常后必须释放互斥锁, 否则后续启动永远报"重复启动"
+      g_start_mutex.unlock();
     });
     processingThread.detach();
     

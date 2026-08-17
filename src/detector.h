@@ -53,8 +53,10 @@ public:
 	 *                       用于计算检测点 0/3/4
 	 * @param detect_region2 第二个定位模板 (locator2.png) 在图像中的范围
 	 *                       用于计算检测点 1/2
+	 * @param format 输入视频帧的像素格式, 仅支持 NV12 / YUV420P;
+	 *               其他格式构造时抛出 std::runtime_error
 	 */
-	PixelDetector(cv::Rect detect_region1, cv::Rect detect_region2);
+	PixelDetector(cv::Rect detect_region1, cv::Rect detect_region2, AVPixelFormat format);
 
 	/* 检测当前帧的状态 */
 	FrameState Detect(const AVFrame* frame);
@@ -72,6 +74,9 @@ public:
 	~PixelDetector();
 private:
 	std::pair<int, int> detect_points[5];
+
+	/* 输入帧像素格式, 仅 NV12 / YUV420P (构造时校验) */
+	AVPixelFormat pixel_format{ AV_PIX_FMT_NONE };
 
 	bool Activated(const AVFrame* frame, std::pair<int, int>& coord);
 };
