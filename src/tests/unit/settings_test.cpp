@@ -26,18 +26,27 @@ std::wstring AnsiToWide(const std::string& ansi) {
   return wide;
 }
 
-/* 用 WC_NO_BEST_FIT_CHARS 逐字符探测,
+/* 逐字符转出再转回比较 (往返检测),
  * 判断宽字符串能否被当前 ANSI 代码页无损表示
  *
+ * WC_NO_BEST_FIT_CHARS 探测只对 932/936/949/950 等 DBCS
+ * 代码页生效, 单字节代码页 (如 CI 的 CP1252) 对不可表示字符
+ * 会直接替换为 '?' 而不报错
+ *
  * @param wide UTF-16 宽字符字符串
- * @return 全部字符均可精确编码时为 true
+ * @return 全部字符均可无损往返时为 true
  */
 bool CanEncodeInAcp(const std::wstring& wide) {
   for (wchar_t wc : wide) {
     char buf[4] = {};
-    int r = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, &wc, 1, buf,
-                                sizeof(buf), nullptr, nullptr);
-    if (r <= 0) {
+    int len = WideCharToMultiByte(CP_ACP, 0, &wc, 1, buf, sizeof(buf),
+                                  nullptr, nullptr);
+    if (len <= 0) {
+      return false;
+    }
+    wchar_t back = L'\0';
+    if (MultiByteToWideChar(CP_ACP, 0, buf, len, &back, 1) != 1 ||
+        back != wc) {
       return false;
     }
   }
