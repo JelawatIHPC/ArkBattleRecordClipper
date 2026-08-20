@@ -3,7 +3,7 @@ set_version("0.1.4")
 includes("@builtin/xpack")
 
 -- Add require FFmpeg
-add_requires("ffmpeg-btbn n7.1.2", {configs = {shared = true, runtime = "MD"}})
+add_requires("ffmpeg-btbn 7.1.2", {configs = {shared = true, runtime = "MD"}})
 
 -- Add require OpenCV
 add_requires("opencv 4.12.0", {configs = {shared = true, ffmpeg = false}})
@@ -89,9 +89,8 @@ package("ffmpeg-btbn")
     set_license("LGPL-3.0")
 
     if is_plat("windows") then
-        add_urls("https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2025-10-31-13-40/ffmpeg-n7.1.2-7-g24c44c34dc-win64-lgpl-shared-7.1.zip",
-                {alias = "BtbN"})
-        add_versions("BtbN:n7.1.2", "0a65ca92d0ac2a7bcbda1fd7d0e5d511fc2eade57d44fde67a8051955af054c3")
+        add_urls("https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2025-10-31-13-40/ffmpeg-n7.1.2-7-g24c44c34dc-win64-lgpl-shared-7.1.zip")
+        add_versions("7.1.2", "0a65ca92d0ac2a7bcbda1fd7d0e5d511fc2eade57d44fde67a8051955af054c3")
         add_links("avfilter", "avdevice", "avformat", "avcodec", "swscale", "swresample", "avutil")
     end
 

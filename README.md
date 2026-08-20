@@ -209,6 +209,7 @@ A: Xrepo 从 GitHub 下载依赖，请确保网络畅通。可以尝试：
 |---|--------|------|
 | FFmpeg | LGPL-3.0 | 视频编解码 |
 | OpenCV | Apache-2.0 | 图像处理 |
+| Google Test | BSD-3-Clause | 单元测试框架 |
 | webview | MIT | WebView 封装 |
 | nlohmann/json | MIT | JSON 解析 |
 

@@ -12,12 +12,17 @@
     - Usage: Dynamically linked library
     - License: Apache-2.0, https://www.apache.org/licenses/LICENSE-2.0
 
-3.  WebView
+3.  Google Test (gtest)
+    - Website: https://github.com/google/googletest
+    - Usage: Test framework
+    - License: BSD-3-Clause, https://opensource.org/licenses/BSD-3-Clause
+
+4.  WebView
     - Website: https://github.com/webview/webview
     - Usage: Static library
     - License: MIT, https://opensource.org/licenses/MIT
 
-4.  nlohmann/json
+5.  nlohmann/json
     - Website: https://github.com/nlohmann/json
     - Usage: Static library
     - License: MIT, https://opensource.org/licenses/MIT
