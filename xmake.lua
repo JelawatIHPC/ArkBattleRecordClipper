@@ -15,7 +15,7 @@ add_requires("webview 0.11.0")
 add_requires("nlohmann_json 3.12.0")
 
 -- Add require gtest
-add_requires("gtest")
+add_requires("gtest v1.17.0")
 
 add_rules("mode.debug", "mode.release")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = "$(builddir)"})

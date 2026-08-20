@@ -6,6 +6,7 @@
 ![C++20](https://img.shields.io/badge/Language-C++20-orange.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
+[![CI](https://github.com/JelawatIHPC/ArkBattleRecordClipper/actions/workflows/test.yml/badge.svg)](https://github.com/JelawatIHPC/ArkBattleRecordClipper/actions/workflows/test.yml)
 
 **一个堪称高效的明日方舟录屏剪辑工具**
 
@@ -92,6 +93,7 @@ Xmake 会自动从 Github 等源拉取如下项目依赖：
 
 - [FFmpeg (BtbN LGPL Release)](https://github.com/BtbN/FFmpeg-Builds/releases)
 - [OpenCV](https://github.com/opencv/opencv/)
+- [Google Test (gtest)](https://github.com/google/googletest)
 - [webview](https://github.com/webview/webview)
 - [nlohmann/json](https://github.com/nlohmann/json)
     </p>
@@ -113,6 +115,20 @@ xmake install -o ./output
 # │   ├── ...
 # └── *.dll (FFmpeg, OpenCV 动态库)
 ```
+
+## 开发与测试
+
+### 单元测试和集成测试
+
+项目使用 Google Test 编写单元测试，测试目标为 `tests`（不参与默认构建）：
+
+```bash
+# 编译并运行测试
+xmake build tests
+xmake run tests
+```
+
+同时，每次 push / PR 由 GitHub Actions 自动构建并运行测试：[test workflow](https://github.com/JelawatIHPC/ArkBattleRecordClipper/actions/workflows/test.yml)
 
 ## 使用说明
 

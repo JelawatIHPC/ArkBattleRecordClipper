@@ -1,0 +1,45 @@
+name: release
+
+on:
+  workflow_dispatch:          # 手动触发（打包预览，产物名为分支名）
+  push:
+    tags: ["*"]               # 任意标签（0.1.0 / 0.1.1 / ...）均触发发布
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: xmake-io/setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - run: xmake f -m release
+      - run: xmake build
+
+      - name: 安装并组装一级版本目录
+        shell: pwsh
+        run: |
+          xmake install -o staging
+          New-Item -ItemType Directory -Path "release/ArkBattleRecordClipper-$env:GITHUB_REF_NAME" -Force
+          Copy-Item -Path "staging/*" -Destination "release/ArkBattleRecordClipper-$env:GITHUB_REF_NAME" -Recurse
+
+      - name: 打包 zip（内含一级版本目录）
+        shell: pwsh
+        run: |
+          $dir = "release/ArkBattleRecordClipper-$env:GITHUB_REF_NAME"
+          Compress-Archive -Path $dir -DestinationPath "$dir.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: release/*.zip
+
+      - name: 创建 GitHub Release（仅 tag 触发时，草稿待审核）
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.zip
+          generate_release_notes: true
+          draft: true
