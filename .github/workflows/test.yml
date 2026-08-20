@@ -4,17 +4,24 @@ on:
   push:
   pull_request:
 
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    runs-on: windows-latest
+    runs-on: windows-2022
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
       - uses: xmake-io/github-action-setup-xmake@v1
         with:
-          xmake-version: latest
+          xmake-version: '>=3.0.6 <3.1.0'
+          package-cache: true
+          build-cache: true
 
-      - run: xmake f -m release
-      - run: xmake build
-      - run: xmake build tests
+      - run: xmake f -y -m release
+      - run: xmake build -y
+      - run: xmake build -y tests
       - run: xmake run tests

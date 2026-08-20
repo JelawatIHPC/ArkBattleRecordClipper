@@ -5,18 +5,27 @@ on:
   push:
     tags: ["*"]               # 任意标签（0.1.0 / 0.1.1 / ...）均触发发布
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
+    timeout-minutes: 60
+    permissions:
+      contents: write        # 创建 GitHub Release 需要
     steps:
       - uses: actions/checkout@v4
 
       - uses: xmake-io/github-action-setup-xmake@v1
         with:
-          xmake-version: latest
+          xmake-version: '>=3.0.6 <3.1.0'
+          package-cache: true
+          build-cache: true
 
-      - run: xmake f -m release
-      - run: xmake build
+      - run: xmake f -y -m release
+      - run: xmake build -y
 
       - name: 安装并组装一级版本目录
         shell: pwsh
@@ -29,7 +38,7 @@ jobs:
         shell: pwsh
         run: |
           $dir = "release/ArkBattleRecordClipper-$env:GITHUB_REF_NAME"
-          Compress-Archive -Path $dir -DestinationPath "$dir.zip"
+          tar -a -c -f "$dir.zip" "$dir"
 
       - uses: actions/upload-artifact@v4
         with:
