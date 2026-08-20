@@ -6,7 +6,7 @@ includes("@builtin/xpack")
 add_requires("ffmpeg-btbn 7.1.2", {configs = {shared = true, runtime = "MD"}})
 
 -- Add require OpenCV
-add_requires("opencv 4.12.0", {configs = {shared = true, ffmpeg = false}})
+add_requires("opencv 4.12.0", {configs = {shared = true, ffmpeg = false, eigen = false}})
 
 -- Add require WebView
 add_requires("webview 0.11.0")
