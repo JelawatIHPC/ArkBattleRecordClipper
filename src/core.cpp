@@ -249,8 +249,8 @@ private:
         metrics.state = WorkState::sLocating;
         MetricsStore(metrics);
 
-        ACDecoder decoder(setting.input_filename, ACDecoder::Codec::DXVA2);
-        ACLocator locator(setting.locator_filename, setting.locator2_filename);
+        ACDecoder decoder(setting.input_filename_utf8, ACDecoder::Codec::DXVA2);
+        ACLocator locator(setting.locator_filename_ansi, setting.locator2_filename_ansi);
         decoder.Seek(20);
 
         // 两个模板各自的有效定位结果集合
@@ -399,13 +399,13 @@ void Start(const Setting& setting) {
     // 第二轮：识别暂停
     MetricsSetState(WorkState::sClipping);
     ACDecoder input {
-        setting.input_filename, prior_decoder
+        setting.input_filename_utf8, prior_decoder
     };
     PixelDetector detector {
         detect_result.locator1.box, detect_result.locator2.box, input.GetFormat()
     };
     ACEncoder output {
-        setting.output_filename, &input, prior_encoder, ACEncoder::Format::NV12, setting.output_bitrate > 0 ? setting.output_bitrate : input.GetAvgBitrate()
+        setting.output_filename_utf8, &input, prior_encoder, ACEncoder::Format::NV12, setting.output_bitrate > 0 ? setting.output_bitrate : input.GetAvgBitrate()
     };
     ACCPUTranscoder transcoder {
         input.GetFormat(), output.GetFormat(), input.GetWidth(), input.GetHeight()

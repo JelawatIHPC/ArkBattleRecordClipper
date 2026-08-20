@@ -11,11 +11,12 @@ enum class WorkState {
 };
 
 struct Setting {
-    // 输入和输出文件名
-    std::string input_filename;
-    std::string output_filename;
-    std::string locator_filename;
-    std::string locator2_filename;
+    // 输入/输出文件名: 供 FFmpeg (avformat_open_input / avio_open 要求严格 UTF-8)
+    std::string input_filename_utf8;
+    std::string output_filename_utf8;
+    // 定位模板路径: 供 OpenCV (imread 内部按 ANSI 系统代码页 fopen)
+    std::string locator_filename_ansi;
+    std::string locator2_filename_ansi;
     
     // 输出比特率, 0 表示使用输入视频的平均比特率
     int64_t output_bitrate = 0;

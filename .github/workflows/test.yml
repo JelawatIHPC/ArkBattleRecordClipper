@@ -1,0 +1,20 @@
+name: test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: xmake-io/setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - run: xmake f -m release
+      - run: xmake build
+      - run: xmake build tests
+      - run: xmake run tests

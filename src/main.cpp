@@ -21,6 +21,7 @@
 
 #include "errors.h"
 #include "crashguard.h"
+#include "settings.h"
 
 // 窗口尺寸常量
 constexpr int WINDOW_WIDTH = 864;
@@ -48,47 +49,6 @@ static std::mutex g_start_mutex;
 #ifdef _MSVC_STL_VERSION
 #pragma comment(linker, "/subsystem:windows /entry:mainCRTStartup")
 #endif
-
-Setting ParseSetting(const std::string& req) {
-  // 解析 JSON 请求
-  // req 格式: {"input_file": "...", "output_file": "...", "bitrate": 6000, ...}
-  
-  // 创建 Setting 结构体
-  Setting setting;
-  // 获取当前工作目录: 必须使用 Wide API 并将 GBK 字节转换为 UTF-8
-  wchar_t current_path[4096];
-  GetModuleFileNameW(NULL, current_path, 4096);
-  std::string current_dir;
-  int utf8_len = WideCharToMultiByte(CP_UTF8, 0, current_path, -1, nullptr, 0, nullptr, nullptr);
-  if (utf8_len > 0) {
-    std::vector<char> utf8_path(utf8_len);
-    WideCharToMultiByte(CP_UTF8, 0, current_path, -1, utf8_path.data(), utf8_len, nullptr, nullptr);
-    current_dir = std::string(utf8_path.data());
-  }
-  current_dir = current_dir.substr(0, current_dir.find_last_of("\\"));
-  
-  setting.locator_filename = current_dir + "/assets/locator.png";
-  setting.locator2_filename = current_dir + "/assets/locator2.png";
-  
-  try {
-    // 我也不知道为什么 webview 弄过来的 json 还套了一层数组
-    nlohmann::json j = nlohmann::json::parse(req)[0];
-    
-    // 提取参数
-    setting.input_filename = j.value("input_file", "");
-    setting.output_filename = current_dir + "/" + j.value("output_file", "");
-    setting.output_bitrate = j.value("bitrate", 0);
-    setting.acceleration.play1x = j.value("speed_1x", false) ? 2.0f : 1.0f;
-    setting.acceleration.select = j.value("bullet_time", 1.0f);
-    setting.select_pause_reserved_time = j.value("anim_reserved", 0.3f);
-    setting.encoder = j.value("encoder", "auto");
-    setting.decoder = j.value("decoder", "dxva2");
-  } catch (const std::exception& e) {
-    // 解析失败直接抛出, 由调用方投递到错误队列
-    throw std::runtime_error(std::string("参数解析错误: ") + e.what());
-  }
-  return setting;
-}
 
 /**
  * @brief 应用程序入口函数

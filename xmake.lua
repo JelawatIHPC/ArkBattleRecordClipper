@@ -1,5 +1,5 @@
 set_xmakever("3.0.6")
-set_version("0.1.3")
+set_version("0.1.4")
 includes("@builtin/xpack")
 
 -- Add require FFmpeg
@@ -13,6 +13,9 @@ add_requires("webview 0.11.0")
 
 -- Add require nlohmann_json
 add_requires("nlohmann_json 3.12.0")
+
+-- Add require gtest
+add_requires("gtest")
 
 add_rules("mode.debug", "mode.release")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = "$(builddir)"})
@@ -55,6 +58,21 @@ target("core")
         os.rm(target:targetdir() .. "/assets")
         os.rm(target:targetdir() .. "/ui")
     end)
+
+target("tests")
+    set_kind("binary")
+    set_default(false)
+
+    set_languages("cxx20")
+    set_warnings("all", "error")
+    set_encodings("utf-8")
+
+    add_files("src/tests/**.cpp")
+    add_files("src/*.cpp|main.cpp")
+    add_includedirs("src")
+
+    add_packages("gtest", "opencv", "ffmpeg-btbn", "nlohmann_json")
+    add_syslinks("kernel32")
 
 xpack("core")
     set_formats("srczip")
