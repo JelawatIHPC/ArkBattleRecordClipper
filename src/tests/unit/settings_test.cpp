@@ -26,9 +26,27 @@ std::wstring AnsiToWide(const std::string& ansi) {
   return wide;
 }
 
+/* 用 WC_NO_BEST_FIT_CHARS 逐字符探测,
+ * 判断宽字符串能否被当前 ANSI 代码页无损表示
+ *
+ * @param wide UTF-16 宽字符字符串
+ * @return 全部字符均可精确编码时为 true
+ */
+bool CanEncodeInAcp(const std::wstring& wide) {
+  for (wchar_t wc : wide) {
+    char buf[4] = {};
+    int r = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS, &wc, 1, buf,
+                                sizeof(buf), nullptr, nullptr);
+    if (r <= 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
-/* 设置解析: 全部字段正确解析, 输入/输出为 UTF-8, 定位模板为 GBK
+/* 设置解析: 全部字段正确解析, 输入/输出为 UTF-8, 定位模板为系统代码页 (中文系统即 GBK)
  */
 TEST(ParseSetting, ParsesAllFields) {
   const std::string req =
@@ -98,17 +116,15 @@ TEST(ParseSetting, ChineseBaseDirUsesPerConsumerCharsets) {
   EXPECT_EQ("录屏.mp4", setting.input_filename_utf8);
   EXPECT_EQ("C:/基地/剪辑.mp4", setting.output_filename_utf8);
 
-  // 中文系统代码页 (GBK/Big5/GB18030) 下定位模板必须成功转换且回转换一致;
-  // 无法表示中文的代码页下转换失败为空串 (已知限制, 不影响 ASCII 路径)
-  UINT acp = GetACP();
-  if (acp == 936 || acp == 950 || acp == 54936) {
-    ASSERT_FALSE(setting.locator_filename_ansi.empty());
-    ASSERT_FALSE(setting.locator2_filename_ansi.empty());
-  }
-  if (!setting.locator_filename_ansi.empty()) {
-    EXPECT_EQ(L"C:/基地/assets/locator.png",
-              AnsiToWide(setting.locator_filename_ansi));
+  // 定位模板: 仅当期望值能被当前 ANSI 代码页无损表示时才做回转换一致性断言
+  // (无法表示时实现按设计退化为 '?' 占位, 不影响 ASCII 路径)
+  const std::wstring expect_locator = L"C:/基地/assets/locator.png";
+  if (CanEncodeInAcp(expect_locator)) {
+    EXPECT_EQ(expect_locator, AnsiToWide(setting.locator_filename_ansi));
     EXPECT_EQ(L"C:/基地/assets/locator2.png",
               AnsiToWide(setting.locator2_filename_ansi));
+  } else {
+    ASSERT_FALSE(setting.locator_filename_ansi.empty());
+    ASSERT_FALSE(setting.locator2_filename_ansi.empty());
   }
 }
