@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 #include <thread>
-#include <mutex>
+#include <atomic>
 
 #include <webview/webview.h>
 #include <nlohmann/json.hpp>
@@ -42,8 +42,10 @@ static POINT dragStartCursorPos;
 static POINT dragStartWindowPos;
 static HWND g_hwnd = nullptr;
 
-// 处理互斥锁: 启动前锁定, 处理线程结束或抛异常后释放 (防止异常路径锁泄漏导致永久"重复启动")
-static std::mutex g_start_mutex;
+// 处理状态标志: 启动前置位, 处理线程结束或抛异常后复位
+// 注意: 不能用 std::mutex 实现该语义——UI 线程加锁 + 工作线程解锁是跨线程解锁,
+// 属未定义行为, debug CRT 会在 _Mtx_unlock 中以 "unlock of unowned mutex" 断言终止进程
+static std::atomic<bool> g_processing{ false };
 
 // MSVC 隐藏控制台窗口
 #ifdef _MSVC_STL_VERSION
@@ -215,31 +217,31 @@ int main() {
       return "false";
     }
 
-    // 启动前锁定互斥锁, 已有处理进行中则拒绝本次启动
-    if (g_start_mutex.try_lock() == false) {
+    // 已有处理进行中则拒绝本次启动
+    if (g_processing.exchange(true)) {
       ACErrors().Post("重复启动");
       return "false";
     }
 
     // 在新线程中启动处理
-    std::thread processingThread([setting]() {
-      try {
-        // 调用 core 模块的 Start 函数
-        Start(setting);
-      } catch (const std::runtime_error& e) {
-        // 捕获异常并投递到错误队列
-        ACErrors().Post(e.what());
-      } catch (const std::exception& e) {
-        // 捕获其它类型的异常
-        ACErrors().Post(e.what());
-      } catch (...) {
-        // 捕获未知异常
-        ACErrors().Post("未知错误");
-      }
-      // 处理结束或抛异常后必须释放互斥锁, 否则后续启动永远报"重复启动"
-      g_start_mutex.unlock();
-    });
-    processingThread.detach();
+    try {
+      std::thread processingThread([setting]() {
+        try {
+          Start(setting);   // 调用 core 模块的 Start 函数
+        } catch (const std::exception& e) {
+          ACErrors().Post(e.what());
+        } catch (...) {
+          ACErrors().Post("未知错误");
+        }
+        g_processing.store(false);
+      });
+      processingThread.detach();
+    } catch (const std::system_error&) {
+      // 线程创建失败, 复位标志避免永久"重复启动"
+      g_processing.store(false);
+      ACErrors().Post("启动处理时发生未知错误");
+      return "false";
+    }
     
     return "true";
   });

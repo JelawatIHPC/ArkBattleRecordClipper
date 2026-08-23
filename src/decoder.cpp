@@ -178,6 +178,11 @@ bool ACDecoder::Seek(int second) {
 }
 
 
+void ACDecoder::SetKeyframeOnly(bool enable) {
+    input_codec_ctx->skip_frame = enable ? AVDISCARD_NONKEY : AVDISCARD_DEFAULT;
+}
+
+
 int ACDecoder::Decode(AVFrame* frame) {
 
     if (!frame) {

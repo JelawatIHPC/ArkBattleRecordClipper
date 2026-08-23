@@ -1260,7 +1260,9 @@
                         }
                         document.getElementById('metric-eta').textContent = etaStr;
 
-                        if (metrics.progress >= 100) {
+                        // 进度 100% 只代表解码完成, 需等状态回到空闲(0)才算真正完成,
+                        // 否则会在提交尾帧/写文件尾阶段误显示"已完成"
+                        if (metrics.progress >= 100 && metrics.state === 0) {
                             clearInterval(metricsInterval);
                             showCompleteState();
                         }

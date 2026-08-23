@@ -115,10 +115,83 @@ LocateResult ACLocator::Locate(const AVFrame* frame, double threshold) {
         }
     }
 
+    // 模板 1 成功时更新内部参考, 供下一帧小窗口定位使用
+    if (!fine1.box.empty()) {
+        prev_fine1_ = fine1;
+    }
+
     return {
         fine1,
         fine2
     };
+}
+
+LocateResult ACLocator::LocateSmall(const AVFrame* frame, double threshold) {
+    // 从未成功定位过模板 1, 无参考可用, 由调用方走全窗口定位
+    if (prev_fine1_.box.empty()) {
+        return LocateResult{};
+    }
+
+    // 提取 NV12 格式 Y 平面创建灰度图像
+    cv::Mat y_plane(frame->height, frame->width, CV_8UC1, frame->data[0], frame->linesize[0]);
+
+    // 空间窗口: 上一帧结果外扩 6px, 贴近画面边缘时裁剪到帧范围内
+    constexpr int MARGIN = 6;
+    cv::Rect box = cv::Rect(
+        prev_fine1_.box.x - MARGIN, prev_fine1_.box.y - MARGIN,
+        prev_fine1_.box.width + 2 * MARGIN, prev_fine1_.box.height + 2 * MARGIN
+    ) & cv::Rect(0, 0, frame->width, frame->height);
+    if (box.empty()) {
+        return LocateResult{};
+    }
+    cv::Mat y_plane_cropped = y_plane(box);
+    int offset_x = box.x;
+    int offset_y = box.y;
+
+    // 模板高度上限: 高度本身与按宽高比换算的宽度都不能超过搜索区域
+    const LocatorTemplate& templ = templates_[0];
+    int max_h = std::max(1, std::min(y_plane_cropped.rows,
+        (int)floor((double)y_plane_cropped.cols * templ.locator_gray.rows / templ.locator_gray.cols)));
+    // 尺度窗口: 上一帧匹配高度 ±2px (UI 静止, 高度几乎不变)
+    int lower_bound = std::max(1, prev_fine1_.box.height - 2);
+    int upper_bound = std::max(lower_bound, prev_fine1_.box.height + 2);
+    lower_bound = std::min(lower_bound, max_h);
+    upper_bound = std::min(upper_bound, max_h);
+    if (upper_bound < lower_bound) {
+        upper_bound = lower_bound;
+    }
+
+    // 在多尺度上匹配模板 1
+    LocatorResult best;
+    cv::Mat locator_plane;
+    for (int h = upper_bound; h >= lower_bound; --h) {
+        // 缩放模板
+        double scale = (double)h / templ.locator_gray.rows;
+        auto scaled_size = cv::Size((int)round(templ.locator_gray.cols * scale), h);
+        cv::resize(templ.locator_gray, locator_plane, scaled_size, 0, 0, cv::INTER_LANCZOS4);
+
+        // 执行模板匹配
+        auto result = _locate(y_plane_cropped, locator_plane, threshold);
+
+        // 找到匹配结果
+        if (result.score >= threshold && result.score > best.score) {
+            best = result;
+        }
+    }
+
+    // 模板 1 未命中: 不更新内部参考 (保留旧值供后续帧廉价跳过)
+    if (best.box.empty()) {
+        return LocateResult{};
+    }
+
+    // 将搜索区域的偏移加回
+    best.box.x += offset_x;
+    best.box.y += offset_y;
+    prev_fine1_ = best;
+
+    // 模板 1 成功后照常精定位模板 2
+    LocatorResult fine2 = LocateFine(frame, 1, best, threshold);
+    return { best, fine2 };
 }
 
 /* 把 NV12 帧 (考虑 linesize 对齐) 拷贝为紧凑布局后转 BGR, 绘制粗定位/精定位框。
@@ -137,7 +210,7 @@ void ACLocator::Visualize(const AVFrame* frame, const LocatorResult& rough,
     cv::Mat bgr;
     cv::cvtColor(nv12, bgr, cv::COLOR_YUV2BGR_NV12);
 
-    // 垂直中线 (模板 2 搜索区域的左边界)
+    // 垂直中线 (画面参考线)
     cv::line(bgr, cv::Point(frame->width / 2, 0), cv::Point(frame->width / 2, frame->height),
              cv::Scalar(255, 255, 0), 1);
     // 粗定位框: 绿色
@@ -186,12 +259,12 @@ LocatorResult ACLocator::LocateFine(const AVFrame* frame, size_t index, const Lo
         lower_bound = std::max(1, (int)floor(box.height * 0.666666666666667));
         upper_bound = std::max(lower_bound, (int)ceil(box.height * 0.833333333333333));
     } else {
-        // 模板 2: 搜索区域为 [垂直中线, 模板 1 左边缘] x [模板 1 上边缘, 模板 1 下边缘+模板 1 高度]。
-        // 模板 2 实际位于模板 1 的左下方, 垂直范围向下延伸一个模板 1 高度,
-        // 以保证模板 2 即使整体位于模板 1 下缘之下也能完整落入搜索区
-        cv::Rect region(frame->width / 2, reference.box.y,
-                        reference.box.x - frame->width / 2,
-                        reference.box.height * 2);
+        // 模板 2: 搜索区域横向为模板 1 左边缘向左 1~5 倍模板 1 高度,
+        // 垂直方向自模板 1 上边缘向下延伸 2 倍模板 1 高度。
+        // 模板 2 实际位于模板 1 的左侧偏下, 该范围经实机视频标注验证
+        int unit = reference.box.height;
+        cv::Rect region(reference.box.x - unit * 5, reference.box.y,
+                        unit * 4, unit * 2);
         cv::Rect box = region & cv::Rect(0, 0, frame->width, frame->height);
         if (box.empty()) {
             return LocatorResult{{}, reference.score};

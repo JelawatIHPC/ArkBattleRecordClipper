@@ -251,41 +251,74 @@ private:
 
         ACDecoder decoder(setting.input_filename_utf8, ACDecoder::Codec::DXVA2);
         ACLocator locator(setting.locator_filename_ansi, setting.locator2_filename_ansi);
-        decoder.Seek(20);
 
         // 两个模板各自的有效定位结果集合
         std::vector<LocatorResult> results1, results2;
 
         ACMsTimer timer{ DISPLAY_INTERVAL_MS };
 
-        for (int frame_count = 0; AVFrame* decoded_frame = decoder.Decode(); frame_count++) {
-            // 输入文件已切换, 放弃本次分析
-            if (generation != current_.load()) return LocateResult{};
+        // 扫描一轮: 解码 → 定位 → 收集 → 进度 → 早停。
+        // 模板 1 已有结果后改用小窗口定位 (时序连续性); 小窗口失败时,
+        // 累计结果 <5 回退全窗口搜索, ≥5 认为模板 1 稳定出现, 直接结束本帧
+        bool aborted = false;
+        auto ScanRound = [&]() -> bool {
+            for (int frame_count = 0; AVFrame* decoded_frame = decoder.Decode(); frame_count++) {
+                // 输入文件已切换, 放弃本次分析
+                if (generation != current_.load()) {
+                    aborted = true;
+                    return false;
+                }
 
-            LocateResult new_result = locator.Locate(decoded_frame);
+                LocateResult new_result;
+                if (results1.size() > 0) {
+                    new_result = locator.LocateSmall(decoded_frame);
+                    if (new_result.locator1.box.empty() && results1.size() < 5) {
+                        new_result = locator.Locate(decoded_frame);
+                    }
+                } else {
+                    new_result = locator.Locate(decoded_frame);
+                }
 
-            // 定位阶段进度更新
-            metrics = MetricsSnapshot();
-            metrics.progress_percent = 0.0;
-            metrics.frames_per_second = float(frame_count) / timer.Count() * 1000;
-            metrics.queue_depth = 1;
-            metrics.eta_seconds = 0;
-            MetricsStore(metrics);
+                // 定位阶段进度更新
+                metrics = MetricsSnapshot();
+                metrics.progress_percent = 0.0;
+                metrics.frames_per_second = float(frame_count) / timer.Count() * 1000;
+                metrics.queue_depth = 1;
+                metrics.eta_seconds = 0;
+                MetricsStore(metrics);
 
-            // 收集有效定位结果 (box 为空说明该帧没有对应模板)
-            if (!new_result.locator1.box.empty()) results1.push_back(new_result.locator1);
-            if (!new_result.locator2.box.empty()) results2.push_back(new_result.locator2);
+                // 收集有效定位结果 (box 为空说明该帧没有对应模板)
+                if (!new_result.locator1.box.empty()) results1.push_back(new_result.locator1);
+                if (!new_result.locator2.box.empty()) results2.push_back(new_result.locator2);
 
-            // 两个模板都有至少 1 个有效结果, 求平均减小误差后结束定位阶段
-            if (!results1.empty() && !results2.empty()) {
-                MetricsSetState(WorkState::sIdle);
-                return {
-                    LocatorResult::Mean(results1),
-                    LocatorResult::Mean(results2)
-                };
+                // 两个模板都有至少 1 个有效结果, 求平均减小误差后结束定位阶段
+                if (!results1.empty() && !results2.empty()) {
+                    return true;
+                }
             }
+            return false;
+        };
+
+        // 快速轮: 从头到尾只定位关键帧
+        decoder.SetKeyframeOnly(true);
+        decoder.Seek(0);
+        bool found = ScanRound();
+
+        // 全量轮: 快速轮未找齐时, 从 20s 起逐帧定位 (现有流程)
+        if (!found && !aborted) {
+            decoder.SetKeyframeOnly(false);
+            decoder.Seek(20);
+            found = ScanRound();
         }
-        throw std::runtime_error("无法定位到输入视频中的暂停按钮");
+
+        if (aborted) return LocateResult{};
+        if (!found) throw std::runtime_error("无法定位到输入视频中的暂停按钮");
+
+        MetricsSetState(WorkState::sIdle);
+        return {
+            LocatorResult::Mean(results1),
+            LocatorResult::Mean(results2)
+        };
     }
 
     std::mutex mutex_;
@@ -496,9 +529,13 @@ void Start(const Setting& setting) {
             pts_indexing[decoded_frame->pts] = frame_array.size() - 1;
         }
 
+        size_t backward_idx = pts_indexing.lower_bound(cmt_frame.pts - reserved_pts)->second;
+        // duration==0 且未到 EOF 时, back().pts 可能恰好等于查询键使 upper_bound 返回 end(),
+        // 此时窗口回退为延伸到最后一个已解码帧 (与 EOF 哨兵语义一致)
+        auto   forward_it   = pts_indexing.upper_bound(cmt_frame.pts + reserved_pts);
+        size_t forward_idx  = (forward_it != pts_indexing.end()) ? forward_it->second : frame_array.size() - 1;
+
         // 选中/未选中的切换动画 [ CMT_PTS - R_PTS, CMT_PTS + R_PTS ]
-        size_t backward_idx = pts_indexing.lower_bound(cmt_frame.pts - reserved_pts)->second,
-               forward_idx  = pts_indexing.upper_bound(cmt_frame.pts + reserved_pts)->second;
         bool reserved = CheckSwitch(
             std::span<DetectedFrame>(frame_array).subspan(backward_idx, forward_idx - backward_idx),
             next_commit_idx - backward_idx

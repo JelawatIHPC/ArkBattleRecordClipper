@@ -20,32 +20,32 @@ jobs:
 
       - uses: xmake-io/github-action-setup-xmake@v1
         with:
-          xmake-version: '3.0.6'
+          xmake-version: '3.0.7'
           package-cache: true
           build-cache: true
 
       - run: xmake f -y -m release
       - run: xmake build -y
 
-      - name: 安装并组装一级版本目录
+      - name: Create Version Directory
         shell: pwsh
         run: |
           xmake install -o staging
           New-Item -ItemType Directory -Path "release/ArkBattleRecordClipper-$env:GITHUB_REF_NAME" -Force
           Copy-Item -Path "staging/*" -Destination "release/ArkBattleRecordClipper-$env:GITHUB_REF_NAME" -Recurse
 
-      - name: 打包 zip（内含一级版本目录）
+      - name: Create Zip
         shell: pwsh
         run: |
           $dir = "release/ArkBattleRecordClipper-$env:GITHUB_REF_NAME"
-          tar -a -c -f "$dir.zip" "$dir"
+          tar -a -c -f "$dir.zip" -C "release" (Split-Path $dir -Leaf)
 
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: release/*.zip
 
-      - name: 创建 GitHub Release（仅 tag 触发时，草稿待审核）
+      - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:

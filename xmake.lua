@@ -1,5 +1,5 @@
 set_xmakever("3.0.6")
-set_version("0.1.4")
+set_version("0.1.5")
 includes("@builtin/xpack")
 
 -- Add require FFmpeg

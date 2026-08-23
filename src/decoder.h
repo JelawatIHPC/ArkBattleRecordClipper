@@ -37,6 +37,14 @@ public:
     */
     bool Seek(int second);
 
+    /* 设置是否只输出关键帧 (仅影响后续 Decode 调用, 无需重新初始化解码器)
+     *
+     * 通过 skip_frame = AVDISCARD_NONKEY 实现, 非关键帧在解码器内被直接丢弃。
+     *
+     * @param enable true 时只输出关键帧, false 时恢复输出所有帧
+     */
+    void SetKeyframeOnly(bool enable);
+
     /**
     * 按视频播放顺序解码下一个视频帧, 存储到指定的 AVFrame 中。
     *
