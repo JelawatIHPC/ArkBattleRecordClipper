@@ -40,6 +40,18 @@ jobs:
           $dir = "release/ArkBattleRecordClipper-$env:GITHUB_REF_NAME"
           tar -a -c -f "$dir.zip" -C "release" (Split-Path $dir -Leaf)
 
+      - name: Package PDBs
+        shell: pwsh
+        run: |
+          # 符号文件独立成包 (参考 OBS Studio 的 *-PDBs.zip 实践), 不进安装包;
+          # 与 crash.log 中记录的 pdb-guid 配对用于事后解析崩溃栈
+          $pdbs = Get-ChildItem -Path build -Recurse -Filter *.pdb |
+            Where-Object { $_.Name -notlike "*.obj.pdb" }
+          $dst = "release/ArkBattleRecordClipper-$env:GITHUB_REF_NAME-pdbs"
+          New-Item -ItemType Directory -Path $dst -Force
+          $pdbs | Copy-Item -Destination $dst
+          tar -a -c -f "$dst.zip" -C "release" (Split-Path $dst -Leaf)
+
       - uses: actions/upload-artifact@v4
         with:
           name: dist

@@ -6,6 +6,7 @@
 #include <atomic>
 #include <span>
 #include <stdexcept>
+#include <cstdio>
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -23,6 +24,7 @@ extern "C" {
 #include "memory.h"
 #include "locator.h"
 #include "core.h"
+#include "crashguard.h"
 
 #define POW2(x) ((x)*(x))
 
@@ -48,6 +50,65 @@ static void MetricsStore(const ProgressMetrics& metrics) {
     g_progress_metrics.store(metrics);
 }
 
+// ===== 崩溃现场快照 (crashguard 回调数据源, 见 docs/CRASH_GUARD_PLAN.md §3) =====
+
+/* 快照数值字段: 处理流程单写者 relaxed 更新, 崩溃线程无锁读取 */
+struct CrashContextSnapshot {
+    std::atomic<uint32_t> state{ 0 };           // WorkState
+    std::atomic<uint64_t> frame_idx{ 0 };       // 当前处理帧下标
+    std::atomic<uint64_t> array_size{ 0 };      // frame_array.size()
+    std::atomic<uint64_t> array_capacity{ 0 };  // frame_array.capacity()
+    std::atomic<uint64_t> pts_map_size{ 0 };    // pts_indexing.size()
+};
+static CrashContextSnapshot g_crash_ctx;
+
+/* 字符串字段: Start 入口一次性写入, 之后只读 (编码器/解码器为解析偏好后的请求值,
+   硬件初始化失败时的内部回退不在此反映) */
+static char g_crash_input[1030] = "";
+static char g_crash_encoder[32] = "";
+static char g_crash_decoder[32] = "";
+
+/* JSON 字符串转义: 处理双引号/反斜杠/控制字符, UTF-8 多字节原样保留 */
+static void JsonEscape(char* out, size_t out_len, const char* src) {
+    size_t o = 0;
+    for (const unsigned char* p = (const unsigned char*)src; *p && o + 7 < out_len; ++p) {
+        if (*p == '"' || *p == '\\') {
+            out[o++] = '\\';
+            out[o++] = (char)*p;
+        } else if (*p < 0x20) {
+            o += (size_t)sprintf_s(out + o, out_len - o, "\\u%04X", *p);
+        } else {
+            out[o++] = (char)*p;
+        }
+    }
+    out[o] = '\0';
+}
+
+/* crashguard 崩溃上下文回调: 把快照格式化为一行 JSON。
+   在崩溃线程内执行, 遵守不抛异常/不分配/不加锁约束 */
+static void CrashContextProvider(char* buf, size_t len) {
+    static const char* STATE_NAMES[] = { "sIdle", "sLocating", "sClipping" };
+    const uint32_t s = g_crash_ctx.state.load(std::memory_order_relaxed);
+    char input_esc[sizeof(g_crash_input) * 2] = "";
+    JsonEscape(input_esc, sizeof(input_esc), g_crash_input);
+    sprintf_s(buf, len,
+              "{\"state\":\"%s\",\"frame_idx\":%llu,\"array_size\":%llu,"
+              "\"array_capacity\":%llu,\"pts_map_size\":%llu,"
+              "\"encoder\":\"%s\",\"decoder\":\"%s\",\"input\":\"%s\"}",
+              s < 3 ? STATE_NAMES[s] : "unknown",
+              (unsigned long long)g_crash_ctx.frame_idx.load(std::memory_order_relaxed),
+              (unsigned long long)g_crash_ctx.array_size.load(std::memory_order_relaxed),
+              (unsigned long long)g_crash_ctx.array_capacity.load(std::memory_order_relaxed),
+              (unsigned long long)g_crash_ctx.pts_map_size.load(std::memory_order_relaxed),
+              g_crash_encoder, g_crash_decoder, input_esc);
+}
+
+// 自注册: 静态初始化早于 main, 覆盖预分析等 Start 之前阶段的崩溃
+static const bool g_crash_ctx_registered = [] {
+    SetCrashContextProvider(CrashContextProvider);
+    return true;
+}();
+
 /* 仅更新工作状态, 其余字段保持不变
  *
  * @param state 新的工作状态
@@ -56,6 +117,7 @@ static void MetricsSetState(WorkState state) {
     ProgressMetrics metrics = g_progress_metrics.load();
     metrics.state = state;
     g_progress_metrics.store(metrics);
+    g_crash_ctx.state.store((uint32_t)state, std::memory_order_relaxed);
 }
 
 struct DetectedFrame {
@@ -286,6 +348,7 @@ private:
                 metrics.queue_depth = 1;
                 metrics.eta_seconds = 0;
                 MetricsStore(metrics);
+                g_crash_ctx.frame_idx.store((uint64_t)frame_count, std::memory_order_relaxed);
 
                 // 收集有效定位结果 (box 为空说明该帧没有对应模板)
                 if (!new_result.locator1.box.empty()) results1.push_back(new_result.locator1);
@@ -423,6 +486,11 @@ void Start(const Setting& setting) {
         prior_decoder = DECODER_MAP.at(setting.decoder);
     }
 
+    // 崩溃现场快照: 字符串字段在流程入口一次性写入
+    strncpy_s(g_crash_input, setting.input_filename_utf8.c_str(), _TRUNCATE);
+    strncpy_s(g_crash_encoder, setting.encoder.c_str(), _TRUNCATE);
+    strncpy_s(g_crash_decoder, setting.decoder.c_str(), _TRUNCATE);
+
     // 第一轮：等待预分析完成, 获取两个暂停按钮定位结果
     LocateResult detect_result = g_analyser.GetResult();
 
@@ -434,11 +502,11 @@ void Start(const Setting& setting) {
     ACDecoder input {
         setting.input_filename_utf8, prior_decoder
     };
-    PixelDetector detector {
-        detect_result.locator1.box, detect_result.locator2.box, input.GetFormat()
-    };
     ACEncoder output {
         setting.output_filename_utf8, &input, prior_encoder, ACEncoder::Format::NV12, setting.output_bitrate > 0 ? setting.output_bitrate : input.GetAvgBitrate()
+    };
+    PixelDetector detector {
+        detect_result.locator1.box, detect_result.locator2.box, output.GetFormat()
     };
     ACCPUTranscoder transcoder {
         input.GetFormat(), output.GetFormat(), input.GetWidth(), input.GetHeight()
@@ -568,6 +636,12 @@ void Start(const Setting& setting) {
         metrics.queue_depth = (int)(frame_array.size() - next_commit_idx);
         metrics.eta_seconds = (int)((input.GetFrameCount() - frame_array.size()) / metrics.frames_per_second * 1.025f);
         MetricsStore(metrics);
+
+        // 崩溃现场快照更新 (relaxed: 单写者, 仅诊断用途)
+        g_crash_ctx.frame_idx.store(next_commit_idx, std::memory_order_relaxed);
+        g_crash_ctx.array_size.store(frame_array.size(), std::memory_order_relaxed);
+        g_crash_ctx.array_capacity.store(frame_array.capacity(), std::memory_order_relaxed);
+        g_crash_ctx.pts_map_size.store(pts_indexing.size(), std::memory_order_relaxed);
     }
 
     // 写入文件尾

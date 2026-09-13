@@ -46,6 +46,9 @@ target("core")
 
     add_packages("ffmpeg-btbn", "opencv", "webview", "nlohmann_json")
     add_syslinks("dwmapi")
+    -- release 也生成 PDB (不随安装包分发, 开发侧留存/CI 随 Release 附带),
+    -- 用户崩溃 dump 与 crash.log 中的 pdb-guid 依赖它还原符号
+    set_symbols("debug")
 
     add_installfiles("(assets/**)")
 

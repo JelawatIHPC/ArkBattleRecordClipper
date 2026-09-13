@@ -4,8 +4,6 @@
 #include <cstring>
 #include <vector>
 
-auto LOCATOR_BG_COLOR = cv::Scalar(0x31, 0x31, 0x31);
-
 MatchResult MatchResult::Mean(std::vector<MatchResult>& V)
 {
     double x = 0, y = 0, w = 0, h = 0, ms = 0, s = 0;

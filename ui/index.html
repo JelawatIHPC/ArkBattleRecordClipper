@@ -1230,7 +1230,6 @@
                     if (metrics) {
                         if (metrics.errors && metrics.errors.length) {
                             clearInterval(metricsInterval);
-                            clearInterval(tipsInterval);
                             progressOverlay.classList.remove('active');
                             progressOverlay.classList.remove('progress-complete');
                             window.showMessage('处理失败：' + metrics.errors[0]);
@@ -1270,22 +1269,13 @@
                 } catch (err) {
                     window.showMessage('获取进度失败: ' + err.message);
                     clearInterval(metricsInterval);
-                    clearInterval(tipsInterval);
                     progressOverlay.classList.remove('active');
                     progressOverlay.classList.remove('progress-complete');
                     return;
                 }
             }, 333);
 
-            // const tipsInterval = setInterval(function() {
-            //     tipIndex++;
-            //     if (tipIndex < tipsList.length) {
-            //         progressTips.textContent = tipsList[tipIndex];
-            //     }
-            // }, 15000);
-
             progressOverlay.dataset.metricsInterval = metricsInterval;
-            progressOverlay.dataset.tipsInterval = tipsInterval;
         });
 
         // 显示完成状态：隐藏进度条和指标，显示"完成"文字和输出文件名
@@ -1321,9 +1311,6 @@
         document.getElementById('btn-back').addEventListener('click', function() {
             if (progressOverlay.dataset.metricsInterval) {
                 clearInterval(parseInt(progressOverlay.dataset.metricsInterval));
-            }
-            if (progressOverlay.dataset.tipsInterval) {
-                clearInterval(parseInt(progressOverlay.dataset.tipsInterval));
             }
 
             progressOverlay.classList.remove('active');
