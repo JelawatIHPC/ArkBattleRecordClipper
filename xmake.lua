@@ -1,5 +1,4 @@
 set_xmakever("3.0.6")
-set_version("0.1.5")
 includes("@builtin/xpack")
 
 -- Add require FFmpeg
@@ -145,3 +144,36 @@ package("webview")
         assert(package:has_cxxfuncs("webview_create", {includes = "webview/webview.h"}))
     end)
 package_end()
+
+task("release")
+    on_run(function ()
+        import("core.base.semver")
+        import("core.base.option")
+        local ver = (option.get("version") or ""):trim()
+        if ver == "" or not semver.try_parse(ver) then
+            raise("invalid or missing semver version, usage: xmake release <semver>")
+        end
+
+        local dirty = os.iorun("git status --porcelain") or ""
+        if dirty:trim() ~= "" then
+            raise("working tree is not clean, commit or stash changes before releasing")
+        end
+
+        local existing = (os.iorun("git tag -l " .. ver) or ""):trim()
+        if existing ~= "" then
+            raise("tag %s already exists", ver)
+        end
+
+        io.writefile("VERSION", ver .. "\n")
+        cprint("${bright}VERSION updated to %s", ver)
+
+        os.run("git tag %s", ver)
+        cprint("${bright}tagged %s on HEAD (not pushed)", ver)
+    end)
+    set_menu({
+        usage = "xmake release <semver>",
+        description = "Verify clean tree, bump VERSION, tag HEAD (no push)",
+        options = {
+            {nil, "version", "v", nil, "Semver version to release"}
+        }
+    })

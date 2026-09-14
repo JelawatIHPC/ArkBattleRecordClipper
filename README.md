@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-0.1.5-blue.svg)
+[![Version](https://img.shields.io/github/v/tag/JelawatIHPC/ArkBattleRecordClipper?sort=semver&label=version&color=blue)](https://github.com/JelawatIHPC/ArkBattleRecordClipper/tags)
 ![C++20](https://img.shields.io/badge/Language-C++20-orange.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
