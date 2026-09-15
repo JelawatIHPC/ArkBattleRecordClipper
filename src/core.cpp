@@ -587,6 +587,11 @@ void Start(const Setting& setting) {
             // 规范化前一帧 (frame_array.back().frame) 的持续时间
             frame_array.back().frame->duration =
                 std::min(frame_array.back().frame->duration, decoded_frame->pts - frame_array.back().pts);
+            // 如果规范化之后 duration = 0, 则丢弃该帧
+            if (frame_array.back().frame->duration == 0) {
+                ACFramePool::DefaultPool().Free(frame_array.back().frame);
+                frame_array.pop_back();
+            }
             // 向 frame_array 插入新帧
             frame_array.emplace_back(DetectedFrame{
                 .frame    = decoded_frame,
