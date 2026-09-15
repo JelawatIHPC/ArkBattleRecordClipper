@@ -167,12 +167,16 @@ task("release")
         io.writefile("VERSION", ver .. "\n")
         cprint("${bright}VERSION updated to %s", ver)
 
+        os.run("git add VERSION")
+        os.run('git commit -m "Version %s release"', ver)
+        cprint("${bright}committed Version %s release", ver)
+
         os.run("git tag %s", ver)
         cprint("${bright}tagged %s on HEAD (not pushed)", ver)
     end)
     set_menu({
         usage = "xmake release <semver>",
-        description = "Verify clean tree, bump VERSION, tag HEAD (no push)",
+        description = "Verify clean tree, bump VERSION, commit and tag HEAD (no push)",
         options = {
             {nil, "version", "v", nil, "Semver version to release"}
         }
