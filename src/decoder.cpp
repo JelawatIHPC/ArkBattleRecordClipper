@@ -56,6 +56,7 @@ AVPixelFormat ACDecoder::GetFormat() const {
 }
 
 ACDecoder::ACDecoder(const std::string& filename, Codec codec, Format format) {
+    auto_codec = codec == Codec::AUTO;
     int ret;
     // 打开输入文件
     if ((ret = avformat_open_input(&input_format_ctx, filename.c_str(), nullptr, nullptr)) != 0) {
@@ -138,6 +139,30 @@ ACDecoder::ACDecoder(const std::string& filename, Codec codec, Format format) {
                     avcodec_free_context(&input_codec_ctx);
                     continue;
                 }
+
+                // 预先创建硬件帧池。某些无可用 DXVA2 表面的环境会在
+                // avcodec_receive_frame() 内部才失败甚至触发 SEH,
+                // 这里提前把该硬件候选判定为不可用。
+                AVBufferRef* hw_frames = av_hwframe_ctx_alloc(hw_dev);
+                if (!hw_frames) {
+                    av_buffer_unref(&hw_dev);
+                    avcodec_free_context(&input_codec_ctx);
+                    continue;
+                }
+                AVHWFramesContext* hw_frames_ctx =
+                    reinterpret_cast<AVHWFramesContext*>(hw_frames->data);
+                hw_frames_ctx->format = AV_PIX_FMT_DXVA2_VLD;
+                hw_frames_ctx->sw_format = AV_PIX_FMT_NV12;
+                hw_frames_ctx->width = input_stream->codecpar->width;
+                hw_frames_ctx->height = input_stream->codecpar->height;
+                hw_frames_ctx->initial_pool_size = 1;
+                if (av_hwframe_ctx_init(hw_frames) < 0) {
+                    av_buffer_unref(&hw_frames);
+                    av_buffer_unref(&hw_dev);
+                    avcodec_free_context(&input_codec_ctx);
+                    continue;
+                }
+                av_buffer_unref(&hw_frames);
                 input_codec_ctx->hw_device_ctx = hw_dev;
             }
 
@@ -181,16 +206,30 @@ AVFrame* ACDecoder::Decode() {
     do {
         ret = avcodec_receive_frame(input_codec_ctx, hardware_frame);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-            if (SendPacket() < 0) return nullptr;   // 视频结束
-            else continue;
+            try {
+                if (SendPacket() < 0) return nullptr;   // 视频结束
+            }
+            catch (const std::runtime_error&) {
+                if (input_codec_ctx->hw_device_ctx && auto_codec && !returned_frame) {
+                    FallbackToCpu();
+                    return Decode();
+                }
+                throw;
+            }
+            continue;
         }
         else if (ret < 0) {
+            if (input_codec_ctx->hw_device_ctx && auto_codec && !returned_frame) {
+                FallbackToCpu();
+                return Decode();
+            }
             throw std::runtime_error("从解码器接收帧时出现错误");
         }
     } while (ret < 0);
 
     if (input_codec_ctx->hw_device_ctx == nullptr) {
         // 非硬件解码器，直接返回解码帧
+        returned_frame = true;
         return hardware_frame;
     }
 
@@ -199,12 +238,17 @@ AVFrame* ACDecoder::Decode() {
     ret_frame->width = hardware_frame->width;
     ret_frame->height = hardware_frame->height;
     if (av_hwframe_map(ret_frame, hardware_frame, 0) < 0) {
+        if (auto_codec && !returned_frame) {
+            FallbackToCpu();
+            return Decode();
+        }
         std::cerr << "解码器无法将硬件帧映射到内存：";
         __ACDecoder_Debug_PutHwFrame(hardware_frame);
         throw std::exception();
     }
     av_frame_unref(hardware_frame);
 
+    returned_frame = true;
     return ret_frame;
 }
 
@@ -233,16 +277,30 @@ int ACDecoder::Decode(AVFrame* frame) {
 
     int ret;
     while ((ret = avcodec_receive_frame(input_codec_ctx, hardware_frame)) == AVERROR(EAGAIN)) {
-        if (SendPacket() < 0) return -1;
+        try {
+            if (SendPacket() < 0) return -1;
+        }
+        catch (const std::runtime_error&) {
+            if (input_codec_ctx->hw_device_ctx && auto_codec && !returned_frame) {
+                FallbackToCpu();
+                return Decode(frame);
+            }
+            throw;
+        }
     }
     if (ret < 0) {
         if (ret == AVERROR_EOF) return -1;
+        if (input_codec_ctx->hw_device_ctx && auto_codec && !returned_frame) {
+            FallbackToCpu();
+            return Decode(frame);
+        }
         throw std::runtime_error("从解码器接收帧时出现错误");
     }
 
     if (input_codec_ctx->hw_device_ctx == nullptr) {
         // 非硬件解码器，直接返回解码帧
         av_frame_move_ref(frame, hardware_frame);
+        returned_frame = true;
         return 0;
     }
 
@@ -251,11 +309,44 @@ int ACDecoder::Decode(AVFrame* frame) {
     frame->width = hardware_frame->width;
     frame->height = hardware_frame->height;
     if (av_hwframe_map(frame, hardware_frame, 0) < 0) {
+        if (auto_codec && !returned_frame) {
+            FallbackToCpu();
+            return Decode(frame);
+        }
         throw std::runtime_error("解码器无法将硬件帧映射到内存");
     }
     av_frame_unref(hardware_frame);
 
+    returned_frame = true;
     return 0;
+}
+
+
+void ACDecoder::FallbackToCpu() {
+    if (av_seek_frame(input_format_ctx, input_stream->index, 0, AVSEEK_FLAG_BACKWARD) < 0) {
+        throw std::runtime_error("硬件解码失败且无法回退到 CPU 解码器");
+    }
+    avformat_flush(input_format_ctx);
+    avcodec_free_context(&input_codec_ctx);
+
+    const AVCodec* av_codec = avcodec_find_decoder(input_stream->codecpar->codec_id);
+    if (!av_codec) {
+        throw std::runtime_error("无法找到 CPU 解码器");
+    }
+
+    input_codec_ctx = avcodec_alloc_context3(av_codec);
+    if (!input_codec_ctx ||
+        avcodec_parameters_to_context(input_codec_ctx, input_stream->codecpar) < 0 ||
+        avcodec_open2(input_codec_ctx, av_codec, nullptr) < 0) {
+        avcodec_free_context(&input_codec_ctx);
+        throw std::runtime_error("无法打开 CPU 解码器");
+    }
+
+    pix_fmt = input_codec_ctx->pix_fmt;
+    codec_name = "cpu";
+    av_packet_unref(pkt);
+    av_frame_unref(hardware_frame);
+    av_frame_unref(ret_frame);
 }
 
 

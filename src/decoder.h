@@ -113,6 +113,12 @@ private:
 
     std::string      codec_name;
 
+    bool             auto_codec{ false };
+    bool             returned_frame{ false };
+
+    /* 自动模式下硬件解码失败时, 从头切换到 CPU 解码器 */
+    void FallbackToCpu();
+
     /* 向解码器发送一个新的数据包
      * Return 0 if OK, < 0 on end of file.
     */
