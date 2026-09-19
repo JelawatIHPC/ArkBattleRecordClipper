@@ -89,7 +89,7 @@ TEST(ParseSetting, AppliesDefaultsForEmptyObject) {
   EXPECT_FLOAT_EQ(1.0f, setting.acceleration.select);
   EXPECT_FLOAT_EQ(0.3f, setting.select_pause_reserved_time);
   EXPECT_EQ("auto", setting.encoder);
-  EXPECT_EQ("dxva2", setting.decoder);
+  EXPECT_EQ("auto", setting.decoder);
 }
 
 /* 设置解析: speed_1x 为 false 时一倍速不加倍

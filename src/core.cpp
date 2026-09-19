@@ -249,10 +249,10 @@ private:
 
 /**
  * @brief 预分析器
- * 
+ *
  * 输入文件改变时, 启动异步分析线程定位视频中的暂停按钮,
  * 分析结果通过 std::future 返回给剪辑流程。
-*/
+ */
 class PreAnalyser {
 public:
     PreAnalyser() = default;
@@ -311,7 +311,7 @@ private:
         metrics.state = WorkState::sLocating;
         MetricsStore(metrics);
 
-        ACDecoder decoder(setting.input_filename_utf8, ACDecoder::Codec::DXVA2);
+        ACDecoder decoder(setting.input_filename_utf8, ACDecoder::Codec::AUTO, ACDecoder::Format::NV12);
         ACLocator locator(setting.locator_filename_ansi, setting.locator2_filename_ansi);
 
         // 两个模板各自的有效定位结果集合
@@ -464,8 +464,10 @@ void Start(const Setting& setting) {
         { "nvenc", ACEncoder::Codec::NVENC },
         { "amf", ACEncoder::Codec::AMF },
     };
+
     // 解码器字符串到枚举的映射
-    const std::unordered_map<std::string, ACDecoder::Codec> DECODER_MAP = {
+    static const std::unordered_map<std::string, ACDecoder::Codec> DECODER_MAP = {
+        { "auto", ACDecoder::Codec::AUTO },
         { "dxva2", ACDecoder::Codec::DXVA2 },
         { "cpu", ACDecoder::Codec::CPU },
     };
@@ -478,7 +480,7 @@ void Start(const Setting& setting) {
 #endif
 
     ACEncoder::Codec prior_encoder = ACEncoder::Codec::AUTO;
-    ACDecoder::Codec prior_decoder = ACDecoder::Codec::DXVA2;
+    ACDecoder::Codec prior_decoder = ACDecoder::Codec::AUTO;
     if (ENCODER_MAP.contains(setting.encoder)) {
         prior_encoder = ENCODER_MAP.at(setting.encoder);
     }
@@ -500,7 +502,7 @@ void Start(const Setting& setting) {
     // 第二轮：识别暂停
     MetricsSetState(WorkState::sClipping);
     ACDecoder input {
-        setting.input_filename_utf8, prior_decoder
+        setting.input_filename_utf8, prior_decoder, ACDecoder::Format::NV12
     };
     ACEncoder output {
         setting.output_filename_utf8, &input, prior_encoder, ACEncoder::Format::NV12, setting.output_bitrate > 0 ? setting.output_bitrate : input.GetAvgBitrate()

@@ -33,8 +33,8 @@ struct Setting {
 
     // 优先使用的编码器 ("auto", "cpu", "qsv", "nvenc", "amf")
     std::string encoder = "auto";
-    // 优先使用的解码器 ("dxva2", "cpu")
-    std::string decoder = "dxva2";
+    // 优先使用的解码器 ("auto", "dxva2", "cpu")
+    std::string decoder = "auto";
 };
 
 // 进度监控指标结构体

@@ -901,7 +901,7 @@
                 <div class="form-label">解码器</div>
                 <div class="form-control">
                     <select class="pill-select">
-                        <!-- <option value="auto">自动</option> -->
+                        <option value="auto">自动</option>
                         <option value="dxva2">DXVA2</option>
                         <option value="cpu">CPU</option>
                     </select>
@@ -1157,7 +1157,7 @@
             const animValue = document.getElementById('anim-value')?.textContent || '0.3';
 
             const encoder = document.querySelector('#page-hardware select')?.value || 'auto';
-            const decoder = document.querySelectorAll('#page-hardware select')[1]?.value || 'dxva2';
+            const decoder = document.querySelectorAll('#page-hardware select')[1]?.value || 'auto';
 
             return {
                 input_file: inputFile,
@@ -1212,6 +1212,7 @@
 
             progressOverlay.classList.add('active');
             progressOverlay.classList.remove('progress-complete');
+            progressPercentage.textContent = '0%';
 
             let tipIndex = 0;
             progressTips.textContent = tipsList[tipIndex];

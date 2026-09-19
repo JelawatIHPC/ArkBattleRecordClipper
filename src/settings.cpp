@@ -89,7 +89,7 @@ Setting ParseSetting(const std::string& req, const std::wstring& base_dir) {
     setting.acceleration.select = j.value("bullet_time", 1.0f);
     setting.select_pause_reserved_time = j.value("anim_reserved", 0.3f);
     setting.encoder = j.value("encoder", "auto");
-    setting.decoder = j.value("decoder", "dxva2");
+    setting.decoder = j.value("decoder", "auto");
   } catch (const std::exception& e) {
     // 解析失败直接抛出, 由调用方投递到错误队列
     throw std::runtime_error(std::string("参数解析错误: ") + e.what());

@@ -2,6 +2,7 @@
 
 #include <format>
 #include <stdexcept>
+#include <vector>
 
 
 void __ACDecoder_Debug_PutHwFrame(AVFrame* hardware_frame) {
@@ -54,7 +55,7 @@ AVPixelFormat ACDecoder::GetFormat() const {
     return pix_fmt;
 }
 
-ACDecoder::ACDecoder(const std::string& filename, Codec codec) {
+ACDecoder::ACDecoder(const std::string& filename, Codec codec, Format format) {
     int ret;
     // 打开输入文件
     if ((ret = avformat_open_input(&input_format_ctx, filename.c_str(), nullptr, nullptr)) != 0) {
@@ -85,38 +86,79 @@ ACDecoder::ACDecoder(const std::string& filename, Codec codec) {
         throw std::runtime_error("无法找到解码器");
     }
 
-    // 创建解码器上下文
-    input_codec_ctx = avcodec_alloc_context3(av_codec);
-    if (!input_codec_ctx) {
-        throw std::runtime_error("无法分配解码器上下文");
+    // ACDecoder::Codec -> 名称
+    const std::vector<std::string> CODEC_NAME = {
+        "auto",     // AUTO, should not be passed to FFmpeg
+        "dxva2",    // DXVA2
+        "cpu",      // CPU
+    };
+
+    std::vector<Codec> codec_order = {
+        Codec::DXVA2, Codec::CPU
+    };
+    std::vector<Format> format_order = {
+        Format::NV12, Format::YUV420P
+    };
+    // 根据传入的 codec 和 format 调整初始化顺序列表
+    if (codec != Codec::AUTO) {
+        for (size_t i = 0; i < codec_order.size(); i++)
+            if (codec_order[i] == codec) {
+                if (i != 0) std::swap(codec_order[i], codec_order[0]);
+                break;
+            }
     }
-
-    // 复制编解码器参数
-    if (avcodec_parameters_to_context(input_codec_ctx, input_stream->codecpar) < 0) {
-        throw std::runtime_error("无法复制编解码器参数");
-    }
-
-    switch (codec) {
-    case Codec::DXVA2:
-        input_codec_ctx->extra_hw_frames = (int)ceil(av_q2d(input_stream->avg_frame_rate)) - 17;
-        if (input_codec_ctx->extra_hw_frames < 0)
-            input_codec_ctx->extra_hw_frames = 103;
-
-        if (av_hwdevice_ctx_create(&(input_codec_ctx->hw_device_ctx), AV_HWDEVICE_TYPE_DXVA2, NULL, NULL, NULL) < 0) {
-            throw std::runtime_error("无法创建硬件解码器");
+    for (size_t i = 0; i < format_order.size(); i++)
+        if (format_order[i] == format) {
+            if (i != 0) std::swap(format_order[i], format_order[0]);
+            break;
         }
-        pix_fmt = AV_PIX_FMT_NV12;
-        break;
-    case Codec::CPU:
-        pix_fmt = AV_PIX_FMT_YUV420P;
-        break;
-    default:
-        throw std::runtime_error("无法识别的解码器类型");
-    }
 
-    // 打开解码器
-    if (avcodec_open2(input_codec_ctx, av_codec, nullptr) < 0) {
-        throw std::runtime_error("无法打开解码器");
+    // 按列表顺序尝试打开解码器
+    bool succeeded = false;
+    for (auto codec_type : codec_order) {
+        for (auto pix_fmt_try : format_order) {
+
+            // 创建解码器上下文
+            input_codec_ctx = avcodec_alloc_context3(av_codec);
+            if (!input_codec_ctx) continue;
+
+            // 复制编解码器参数
+            if (avcodec_parameters_to_context(input_codec_ctx, input_stream->codecpar) < 0) {
+                avcodec_free_context(&input_codec_ctx);
+                continue;
+            }
+
+            if (codec_type == Codec::DXVA2) {
+                input_codec_ctx->extra_hw_frames = (int)ceil(av_q2d(input_stream->avg_frame_rate)) - 17;
+                if (input_codec_ctx->extra_hw_frames < 0)
+                    input_codec_ctx->extra_hw_frames = 103;
+
+                AVBufferRef* hw_dev = nullptr;
+                if (av_hwdevice_ctx_create(&hw_dev, AV_HWDEVICE_TYPE_DXVA2, NULL, NULL, NULL) < 0) {
+                    avcodec_free_context(&input_codec_ctx);
+                    continue;
+                }
+                input_codec_ctx->hw_device_ctx = hw_dev;
+            }
+
+            pix_fmt = static_cast<AVPixelFormat>(pix_fmt_try);
+
+            if (avcodec_open2(input_codec_ctx, av_codec, nullptr) == 0) {
+                succeeded = true;
+                codec_name = CODEC_NAME[(size_t)codec_type];
+                // CPU 解码器输出格式由解码器决定, 读取实际值
+                if (codec_type == Codec::CPU) {
+                    pix_fmt = input_codec_ctx->pix_fmt;
+                }
+                break;
+            }
+
+            avcodec_free_context(&input_codec_ctx);
+        }
+        if (succeeded) break;
+    }
+    if (!succeeded) {
+        throw std::runtime_error("找不到可用的视频解码器");
     }
 
     // 创建数据包对象
@@ -153,7 +195,7 @@ AVFrame* ACDecoder::Decode() {
     }
 
     av_frame_unref(ret_frame);
-    ret_frame->format = AV_PIX_FMT_NV12;
+    ret_frame->format = pix_fmt;
     ret_frame->width = hardware_frame->width;
     ret_frame->height = hardware_frame->height;
     if (av_hwframe_map(ret_frame, hardware_frame, 0) < 0) {
@@ -205,7 +247,7 @@ int ACDecoder::Decode(AVFrame* frame) {
     }
 
     // 从硬件解码器读取帧
-    frame->format = AV_PIX_FMT_NV12;
+    frame->format = pix_fmt;
     frame->width = hardware_frame->width;
     frame->height = hardware_frame->height;
     if (av_hwframe_map(frame, hardware_frame, 0) < 0) {

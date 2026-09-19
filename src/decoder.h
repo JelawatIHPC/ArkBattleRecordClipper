@@ -18,14 +18,28 @@ class ACDecoder {
 public:
 
     enum class Codec {
+        AUTO  = 0,
         DXVA2 = 1,
         CPU   = 2,
+    };
+
+    /* 解码器输出像素格式 */
+    enum class Format {
+        NV12    = AV_PIX_FMT_NV12,
+        YUV420P = AV_PIX_FMT_YUV420P,
     };
 
     ACDecoder() = delete;
     ACDecoder(const ACDecoder&& other) = delete;
 
-    ACDecoder(const std::string& filename, Codec codec);
+    /**
+     * 构造解码器, 打开输入文件并按优先级尝试初始化解码器
+     *
+     * @param filename 输入视频文件路径 (UTF-8)
+     * @param codec 解码器类型, AUTO 时按硬件优先顺序自动选择
+     * @param format 期望的输出像素格式
+     */
+    ACDecoder(const std::string& filename, Codec codec, Format format);
 
     /* 按视频播放顺序解码下一个视频帧, 存储到内部分配的 AVFrame 中。
      * 解码新的视频帧时, 上一帧立即释放。
@@ -76,9 +90,15 @@ public:
     /* 解码器输出格式 */
     AVPixelFormat GetFormat() const;
 
+    /* 使用的解码器名称 */
+    const std::string GetCodecName() const { return codec_name; }
+
     /* 打印 Decoder 信息 */
     friend std::ostream& operator<<(std::ostream& output, const ACDecoder& E);
 
+    /**
+     * 析构, 释放 FFmpeg 资源
+     */
     ~ACDecoder();
 
 private:
@@ -90,6 +110,8 @@ private:
     AVPacket*        pkt{ nullptr };
 
     AVPixelFormat    pix_fmt{ AV_PIX_FMT_NONE };
+
+    std::string      codec_name;
 
     /* 向解码器发送一个新的数据包
      * Return 0 if OK, < 0 on end of file.
