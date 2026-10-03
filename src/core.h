@@ -17,6 +17,7 @@ struct Setting {
     // 定位模板路径: 供 OpenCV (imread 内部按 ANSI 系统代码页 fopen)
     std::string locator_filename_ansi;
     std::string locator2_filename_ansi;
+    std::string locator2A_filename_ansi;
     
     // 输出比特率, 0 表示使用输入视频的平均比特率
     int64_t output_bitrate = 0;

@@ -75,6 +75,7 @@ TEST(ParseSetting, ParsesAllFields) {
   EXPECT_EQ("cpu", setting.decoder);
   EXPECT_EQ("C:/base/assets/locator.png", setting.locator_filename_ansi);
   EXPECT_EQ("C:/base/assets/locator2.png", setting.locator2_filename_ansi);
+  EXPECT_EQ("C:/base/assets/locator2A.png", setting.locator2A_filename_ansi);
 }
 
 /* 设置解析: 空对象使用全部默认值
@@ -132,8 +133,11 @@ TEST(ParseSetting, ChineseBaseDirUsesPerConsumerCharsets) {
     EXPECT_EQ(expect_locator, AnsiToWide(setting.locator_filename_ansi));
     EXPECT_EQ(L"C:/基地/assets/locator2.png",
               AnsiToWide(setting.locator2_filename_ansi));
+    EXPECT_EQ(L"C:/基地/assets/locator2A.png",
+              AnsiToWide(setting.locator2A_filename_ansi));
   } else {
     ASSERT_FALSE(setting.locator_filename_ansi.empty());
     ASSERT_FALSE(setting.locator2_filename_ansi.empty());
+    ASSERT_FALSE(setting.locator2A_filename_ansi.empty());
   }
 }

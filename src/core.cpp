@@ -286,7 +286,7 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         if (!future_.valid()) throw std::runtime_error("预分析尚未开始, 请先选择输入文件");
         LocateResult result = future_.get();
-        if (result.locator1.box.empty() || result.locator2.box.empty())
+        if (!result)
             throw std::runtime_error("预分析未完成, 请重新选择输入文件");
         return result;
     }
@@ -304,7 +304,7 @@ private:
      * @param setting 输入文件配置
      * @param generation 本次分析的世代号, 检测到世代号过期时放弃本次分析
      * 
-     * @return LocateResult 定位结果, 分析被取消时返回两个 box 均为空的结果
+     * @return LocateResult 定位结果, 分析被取消时返回空值
     */
     LocateResult Analyse(const Setting& setting, int generation) {
         ProgressMetrics metrics = MetricsSnapshot();
@@ -312,16 +312,15 @@ private:
         MetricsStore(metrics);
 
         ACDecoder decoder(setting.input_filename_utf8, ACDecoder::Codec::AUTO, ACDecoder::Format::NV12);
-        ACLocator locator(setting.locator_filename_ansi, setting.locator2_filename_ansi);
-
-        // 两个模板各自的有效定位结果集合
-        std::vector<LocatorResult> results1, results2;
+        ACLocator locator(setting.locator_filename_ansi,
+                          setting.locator2_filename_ansi,
+                          setting.locator2A_filename_ansi);
 
         ACMsTimer timer{ DISPLAY_INTERVAL_MS };
+        LocateResult result;
 
-        // 扫描一轮: 解码 → 定位 → 收集 → 进度 → 早停。
-        // 模板 1 已有结果后改用小窗口定位 (时序连续性); 小窗口失败时,
-        // 累计结果 <5 回退全窗口搜索, ≥5 认为模板 1 稳定出现, 直接结束本帧
+        // 扫描一轮: 解码 → 定位 → 进度 → 早停。
+        // 小窗口与全窗口定位由 ACLocator 内部负责。
         bool aborted = false;
         auto ScanRound = [&]() -> bool {
             for (int frame_count = 0; AVFrame* decoded_frame = decoder.Decode(); frame_count++) {
@@ -331,15 +330,7 @@ private:
                     return false;
                 }
 
-                LocateResult new_result;
-                if (results1.size() > 0) {
-                    new_result = locator.LocateSmall(decoded_frame);
-                    if (new_result.locator1.box.empty() && results1.size() < 5) {
-                        new_result = locator.Locate(decoded_frame);
-                    }
-                } else {
-                    new_result = locator.Locate(decoded_frame);
-                }
+                LocateResult new_result = locator.Locate(decoded_frame);
 
                 // 定位阶段进度更新
                 metrics = MetricsSnapshot();
@@ -350,12 +341,8 @@ private:
                 MetricsStore(metrics);
                 g_crash_ctx.frame_idx.store((uint64_t)frame_count, std::memory_order_relaxed);
 
-                // 收集有效定位结果 (box 为空说明该帧没有对应模板)
-                if (!new_result.locator1.box.empty()) results1.push_back(new_result.locator1);
-                if (!new_result.locator2.box.empty()) results2.push_back(new_result.locator2);
-
-                // 两个模板都有至少 1 个有效结果, 求平均减小误差后结束定位阶段
-                if (!results1.empty() && !results2.empty()) {
+                if (new_result) {
+                    result = new_result;
                     return true;
                 }
             }
@@ -378,10 +365,7 @@ private:
         if (!found) throw std::runtime_error("无法定位到输入视频中的暂停按钮");
 
         MetricsSetState(WorkState::sIdle);
-        return {
-            LocatorResult::Mean(results1),
-            LocatorResult::Mean(results2)
-        };
+        return result;
     }
 
     std::mutex mutex_;
@@ -508,7 +492,7 @@ void Start(const Setting& setting) {
         setting.output_filename_utf8, &input, prior_encoder, ACEncoder::Format::NV12, setting.output_bitrate > 0 ? setting.output_bitrate : input.GetAvgBitrate()
     };
     PixelDetector detector {
-        detect_result.locator1.box, detect_result.locator2.box, output.GetFormat()
+        *detect_result, output.GetFormat()
     };
     ACCPUTranscoder transcoder {
         input.GetFormat(), output.GetFormat(), input.GetWidth(), input.GetHeight()

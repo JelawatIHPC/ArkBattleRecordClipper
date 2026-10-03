@@ -63,27 +63,14 @@ bool PixelDetector::Activated(const AVFrame* frame, std::pair<int, int>& coord) 
     return (r > 145 && g > 145 && b > 145);
 }
 
-PixelDetector::PixelDetector(cv::Rect detect_region1, cv::Rect detect_region2, AVPixelFormat format)
-    : Detector(detect_region1, detect_region2), pixel_format(format) {
+PixelDetector::PixelDetector(std::array<std::pair<int, int>, 5> detect_points,
+                             AVPixelFormat format)
+    : Detector(), detect_points(detect_points), pixel_format(format) {
     
     if (format != AV_PIX_FMT_NV12 && format != AV_PIX_FMT_YUV420P) {
         throw std::runtime_error("Pixel Detector 不支持此像素格式。");
     }
 
-    // 检测点 0/3/4 相对第一个模板 (locator.png) 的矩形区域计算
-    double origin_x = detect_region1.x + detect_region1.width / 2.0;
-    double origin_y = detect_region1.y + detect_region1.height / 2.0;
-    double width = detect_region1.width;
-    detect_points[0] = { (int)round(origin_x), (int)round(origin_y) };
-    detect_points[3] = { (int)round(origin_x +  0.2333 * width), (int)round(origin_y + -0.2500 * width) };
-    detect_points[4] = { (int)round(origin_x +  0.3333 * width), (int)round(origin_y +  0.2500 * width) };
-
-    // 检测点 1/2 相对第二个模板 (locator2.png) 的矩形区域计算
-    origin_x = detect_region2.x + detect_region2.width / 2.0;
-    origin_y = detect_region2.y + detect_region2.height / 2.0;
-    width = detect_region2.width;
-    detect_points[1] = { (int)round(origin_x + -0.3333 * width), (int)round(origin_y + -0.0208 * width) };
-    detect_points[2] = { (int)round(origin_x +  0.0625 * width), (int)round(origin_y + -0.0208 * width) };
 }
 
 PixelDetector::~PixelDetector() {
@@ -104,8 +91,6 @@ void PixelDetector::Visualize(const AVFrame* frame) const {
     cv::Mat bgr;
     cv::cvtColor(nv12, bgr, cv::COLOR_YUV2BGR_NV12);
 
-    cv::rectangle(bgr, detect_region1, cv::Scalar(0, 255, 0), 1);    // 模板 1: 绿色
-    cv::rectangle(bgr, detect_region2, cv::Scalar(255, 0, 0), 1);    // 模板 2: 蓝色
     for (int i = 0; i < 5; ++i) {
         cv::circle(bgr, cv::Point(detect_points[i].first, detect_points[i].second), 1, cv::Scalar(0, 0, 255), 1);   // 检测点: 红色
     }

@@ -1,6 +1,8 @@
 ﻿#pragma once
 
+#include <array>
 #include <string>
+#include <utility>
 #include <opencv2/opencv.hpp>
 
 extern "C" {
@@ -23,7 +25,7 @@ const std::string FrameStateStr(FrameState s);
 
 class Detector {
 public:
-	Detector() = delete;
+	Detector() = default;
 	Detector(const Detector&& other) = delete;
 
 	/* 构造函数 (双模板)
@@ -47,16 +49,14 @@ protected:
 */
 class PixelDetector : public Detector {
 public:
-	/* 构造函数 (双模板)
+	/* 构造函数
 	 *
-	 * @param detect_region1 第一个定位模板 (locator.png) 在图像中的范围
-	 *                       用于计算检测点 0/3/4
-	 * @param detect_region2 第二个定位模板 (locator2.png) 在图像中的范围
-	 *                       用于计算检测点 1/2
+	 * @param detect_points 定位器生成的五个检测点绝对坐标
 	 * @param format 输入视频帧的像素格式, 仅支持 NV12 / YUV420P;
 	 *               其他格式构造时抛出 std::runtime_error
 	 */
-	PixelDetector(cv::Rect detect_region1, cv::Rect detect_region2, AVPixelFormat format);
+	PixelDetector(std::array<std::pair<int, int>, 5> detect_points,
+	              AVPixelFormat format);
 
 	/* 检测当前帧的状态 */
 	FrameState Detect(const AVFrame* frame);
@@ -73,7 +73,7 @@ public:
 
 	~PixelDetector();
 private:
-	std::pair<int, int> detect_points[5];
+	std::array<std::pair<int, int>, 5> detect_points;
 
 	/* 输入帧像素格式, 仅 NV12 / YUV420P (构造时校验) */
 	AVPixelFormat pixel_format{ AV_PIX_FMT_NONE };

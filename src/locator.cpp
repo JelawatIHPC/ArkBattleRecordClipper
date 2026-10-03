@@ -61,8 +61,12 @@ LocatorResult _locate(const cv::Mat& img, const cv::Mat& templ, double threshold
     }
 }
 
-ACLocator::ACLocator(const std::string& locator1_filename, const std::string& locator2_filename) {
-    const std::string filenames[2] = { locator1_filename, locator2_filename };
+ACLocator::ACLocator(const std::string& locator1_filename,
+                     const std::string& locator2_filename,
+                     const std::string& locator2A_filename) {
+    const std::string filenames[3] = {
+        locator1_filename, locator2_filename, locator2A_filename
+    };
     for (const auto& filename : filenames) {
         // 读取模板图片
         cv::Mat locator_img = cv::imread(filename, cv::IMREAD_COLOR);
@@ -99,35 +103,40 @@ ACLocator::~ACLocator() {
 }
 
 LocateResult ACLocator::Locate(const AVFrame* frame, double threshold) {
-    constexpr double ROUGH_THRESHOLD = 0.7;
-
-    // 粗定位阶段: 只寻找模板 1
-    LocatorResult rough = RoughlyLocate(frame, 0, ROUGH_THRESHOLD);
-
-    // 精定位阶段: 模板 1 成功后再精定位模板 2
-    LocatorResult fine1, fine2;
-    if (rough.score >= ROUGH_THRESHOLD) {
-        fine1 = LocateFine(frame, 0, rough, threshold);
+    if (!prev_fine1_.box.empty()) {
+        LocatorResult fine1 = LocateFineSmall(frame, threshold);
         if (!fine1.box.empty()) {
-            fine2 = LocateFine(frame, 1, fine1, threshold);
+            LocateResult result = LocateSecond(frame, fine1, threshold);
+            if (result) {
+                prev_fine1_ = fine1;
+                return result;
+            }
         }
     }
 
-    // 模板 1 成功时更新内部参考, 供下一帧小窗口定位使用
-    if (!fine1.box.empty()) {
-        prev_fine1_ = fine1;
+    constexpr double ROUGH_THRESHOLD = 0.7;
+    LocatorResult rough = RoughlyLocate(frame, 0, ROUGH_THRESHOLD);
+    if (rough.score < ROUGH_THRESHOLD) {
+        return std::nullopt;
     }
 
-    return {
-        fine1,
-        fine2
-    };
+    LocatorResult fine1 = LocateFine(frame, 0, rough, threshold);
+    if (fine1.box.empty()) {
+        return std::nullopt;
+    }
+
+    LocateResult result = LocateSecond(frame, fine1, threshold);
+    if (result) {
+        prev_fine1_ = fine1;
+    }
+    return result;
 }
 
-LocateResult ACLocator::LocateSmall(const AVFrame* frame, double threshold) {
+LocatorResult ACLocator::LocateFineSmall(const AVFrame* frame,
+                                         double threshold) {
     // 从未成功定位过模板 1, 无参考可用, 由调用方走全窗口定位
     if (prev_fine1_.box.empty()) {
-        return LocateResult{};
+        return {};
     }
 
     // 提取 NV12 格式 Y 平面创建灰度图像
@@ -140,7 +149,7 @@ LocateResult ACLocator::LocateSmall(const AVFrame* frame, double threshold) {
         prev_fine1_.box.width + 2 * MARGIN, prev_fine1_.box.height + 2 * MARGIN
     ) & cv::Rect(0, 0, frame->width, frame->height);
     if (box.empty()) {
-        return LocateResult{};
+        return {};
     }
     cv::Mat y_plane_cropped = y_plane(box);
     int offset_x = box.x;
@@ -179,7 +188,7 @@ LocateResult ACLocator::LocateSmall(const AVFrame* frame, double threshold) {
 
     // 模板 1 未命中: 不更新内部参考 (保留旧值供后续帧廉价跳过)
     if (best.box.empty()) {
-        return LocateResult{};
+        return {};
     }
 
     // 将搜索区域的偏移加回
@@ -187,9 +196,57 @@ LocateResult ACLocator::LocateSmall(const AVFrame* frame, double threshold) {
     best.box.y += offset_y;
     prev_fine1_ = best;
 
-    // 模板 1 成功后照常精定位模板 2
-    LocatorResult fine2 = LocateFine(frame, 1, best, threshold);
-    return { best, fine2 };
+    return best;
+}
+
+LocateResult ACLocator::LocateSecond(const AVFrame* frame,
+                                     const LocatorResult& fine1,
+                                     double threshold) {
+    LocatorResult fine2 = LocateFine(frame, 1, fine1, threshold);
+    LocatorResult fine2A = LocateFine(frame, 2, fine1, threshold);
+
+    if (fine2.box.empty() && fine2A.box.empty()) {
+        return std::nullopt;
+    }
+
+    bool use_locator2A = fine2.box.empty() ||
+        (!fine2A.box.empty() && fine2A.score > fine2.score);
+    const LocatorResult& fine_second = use_locator2A ? fine2A : fine2;
+    return BuildDetectPoints(fine1, fine_second, use_locator2A);
+}
+
+std::array<std::pair<int, int>, 5> ACLocator::BuildDetectPoints(
+    const LocatorResult& fine1,
+    const LocatorResult& fine2,
+    bool locator2A) const {
+    std::array<std::pair<int, int>, 5> points{};
+
+    double origin_x = fine1.box.x + fine1.box.width / 2.0;
+    double origin_y = fine1.box.y + fine1.box.height / 2.0;
+    double width = fine1.box.width;
+    points[0] = {(int)round(origin_x), (int)round(origin_y)};
+    points[3] = {(int)round(origin_x + 0.2333 * width),
+                 (int)round(origin_y - 0.2500 * width)};
+    points[4] = {(int)round(origin_x + 0.3333 * width),
+                 (int)round(origin_y + 0.2500 * width)};
+
+    if (!locator2A) {
+        origin_x = fine2.box.x + fine2.box.width / 2.0;
+        origin_y = fine2.box.y + fine2.box.height / 2.0;
+        width = fine2.box.width;
+        points[1] = {(int)round(origin_x - 0.3333 * width),
+                     (int)round(origin_y - 0.0208 * width)};
+        points[2] = {(int)round(origin_x + 0.0625 * width),
+                     (int)round(origin_y - 0.0208 * width)};
+    } else {
+        // locator2A.png 使用与 locator2.png 相同的模板内相对位置。
+        // locator2.png 的检测点为 (8, 11) 和 (27, 11)，模板尺寸为 48x24。
+        points[1] = {fine2.box.x + (int)round(fine2.box.width * 0.1667),
+                     fine2.box.y + (int)round(fine2.box.height * 0.4583)};
+        points[2] = {fine2.box.x + (int)round(fine2.box.width * 0.5625),
+                     fine2.box.y + (int)round(fine2.box.height * 0.4583)};
+    }
+    return points;
 }
 
 /* 把 NV12 帧 (考虑 linesize 对齐) 拷贝为紧凑布局后转 BGR, 绘制粗定位/精定位框。
@@ -259,10 +316,21 @@ LocatorResult ACLocator::LocateFine(const AVFrame* frame, size_t index, const Lo
     } else {
         // 模板 2: 搜索区域横向为模板 1 左边缘向左 1~5 倍模板 1 高度,
         // 垂直方向自模板 1 上边缘向下延伸 2 倍模板 1 高度。
-        // 模板 2 实际位于模板 1 的左侧偏下, 该范围经实机视频标注验证
+        // locator2A.png 包含完整速度按钮，其顶部比 locator2.png 的图标
+        // 位置高约 1 倍模板 1 高度，因此需要单独向上扩展搜索区域。
         int unit = reference.box.height;
-        cv::Rect region(reference.box.x - unit * 5, reference.box.y,
-                        unit * 4, unit * 2);
+        cv::Rect region;
+        if (index == 2) {
+            region = cv::Rect(reference.box.x - unit * 5,
+                              reference.box.y - unit * 3 / 2,
+                              unit * 4,
+                              unit * 7 / 2);
+        } else {
+            region = cv::Rect(reference.box.x - unit * 5,
+                              reference.box.y,
+                              unit * 4,
+                              unit * 2);
+        }
         cv::Rect box = region & cv::Rect(0, 0, frame->width, frame->height);
         if (box.empty()) {
             return LocatorResult{{}, reference.score};
@@ -286,6 +354,10 @@ LocatorResult ACLocator::LocateFine(const AVFrame* frame, size_t index, const Lo
         upper_bound = lower_bound;
     }
 
+    // locator2A 包含按钮背景，视频背景和压缩噪声会使其相似度低于旧的
+    // 纯图标模板，因此使用稍低但仍足以区分控制按钮的独立阈值。
+    double match_threshold = index == 2 ? 0.85 : threshold;
+
     // 在多尺度上匹配模板
     LocatorResult best;
     cv::Mat locator_plane;
@@ -296,10 +368,10 @@ LocatorResult ACLocator::LocateFine(const AVFrame* frame, size_t index, const Lo
         cv::resize(templ.locator_gray, locator_plane, scaled_size, 0, 0, cv::INTER_LANCZOS4);
 
         // 执行模板匹配
-        auto result = _locate(y_plane_cropped, locator_plane, threshold);
+        auto result = _locate(y_plane_cropped, locator_plane, match_threshold);
 
         // 找到匹配结果
-        if (result.score >= threshold && result.score > best.score) {
+        if (result.score >= match_threshold && result.score > best.score) {
             best = result;
         }
     }

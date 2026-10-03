@@ -76,6 +76,7 @@ Setting ParseSetting(const std::string& req, const std::wstring& base_dir) {
 
   setting.locator_filename_ansi = WideToAnsi(base_dir + L"/assets/locator.png");
   setting.locator2_filename_ansi = WideToAnsi(base_dir + L"/assets/locator2.png");
+  setting.locator2A_filename_ansi = WideToAnsi(base_dir + L"/assets/locator2A.png");
 
   try {
     // 我也不知道为什么 webview 弄过来的 json 还套了一层数组

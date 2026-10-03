@@ -10,18 +10,12 @@ namespace {
 constexpr int kWidth = 1280;
 constexpr int kHeight = 720;
 
-// 与真实 UI 传参一致的定位区域 (locator.png 与 locator2.png 的检测范围)
-const cv::Rect kRegion1(100, 100, 400, 400);
-const cv::Rect kRegion2(700, 100, 300, 300);
-
-/* 检测点坐标 (由 PixelDetector 构造公式计算, 改动构造公式需同步更新):
+/* 检测点坐标:
  * p0=(300,300) p1=(750,244) p2=(869,244) p3=(393,200) p4=(433,400)
  */
-constexpr std::pair<int, int> kP0(300, 300);
-constexpr std::pair<int, int> kP1(750, 244);
-constexpr std::pair<int, int> kP2(869, 244);
-constexpr std::pair<int, int> kP3(393, 200);
-constexpr std::pair<int, int> kP4(433, 400);
+const std::array<std::pair<int, int>, 5> kPoints = {{
+    {300, 300}, {750, 244}, {869, 244}, {393, 200}, {433, 400}
+}};
 
 /* 创建指定尺寸的 NV12 帧: Y 平面填充 y_value, UV 平面填充 128 (中性色)
  */
@@ -60,14 +54,14 @@ void LightUp(AVFrame* frame, const std::pair<int, int>& point) {
 /* 构造: 不支持的像素格式抛出异常
  */
 TEST(PixelDetector, UnsupportedFormatThrows) {
-  EXPECT_THROW(PixelDetector detector(kRegion1, kRegion2, AV_PIX_FMT_YUV444P),
+  EXPECT_THROW(PixelDetector detector(kPoints, AV_PIX_FMT_YUV444P),
                std::runtime_error);
 }
 
 /* 检测: 全黑帧 (无任何激活点) 判定为 DEPLOY
  */
 TEST(PixelDetector, DetectAllBlackFrameIsDeploy) {
-  PixelDetector detector(kRegion1, kRegion2, AV_PIX_FMT_NV12);
+  PixelDetector detector(kPoints, AV_PIX_FMT_NV12);
   AVFrame* frame = CreateNv12Frame(kWidth, kHeight, 16);
   EXPECT_EQ(FrameState::DEPLOY, detector.Detect(frame));
   FreeNv12Frame(frame);
@@ -76,10 +70,10 @@ TEST(PixelDetector, DetectAllBlackFrameIsDeploy) {
 /* 检测: 仅点亮 p0 与 p2 判定为 PAUSE
  */
 TEST(PixelDetector, DetectPauseFrame) {
-  PixelDetector detector(kRegion1, kRegion2, AV_PIX_FMT_NV12);
+  PixelDetector detector(kPoints, AV_PIX_FMT_NV12);
   AVFrame* frame = CreateNv12Frame(kWidth, kHeight, 16);
-  LightUp(frame, kP0);
-  LightUp(frame, kP2);
+  LightUp(frame, kPoints[0]);
+  LightUp(frame, kPoints[2]);
   EXPECT_EQ(FrameState::PAUSE, detector.Detect(frame));
   FreeNv12Frame(frame);
 }
@@ -87,11 +81,11 @@ TEST(PixelDetector, DetectPauseFrame) {
 /* 检测: 点亮 p2/p3/p4 判定为 PLAY
  */
 TEST(PixelDetector, DetectPlayFrame) {
-  PixelDetector detector(kRegion1, kRegion2, AV_PIX_FMT_NV12);
+  PixelDetector detector(kPoints, AV_PIX_FMT_NV12);
   AVFrame* frame = CreateNv12Frame(kWidth, kHeight, 16);
-  LightUp(frame, kP2);
-  LightUp(frame, kP3);
-  LightUp(frame, kP4);
+  LightUp(frame, kPoints[2]);
+  LightUp(frame, kPoints[3]);
+  LightUp(frame, kPoints[4]);
   EXPECT_EQ(FrameState::PLAY, detector.Detect(frame));
   FreeNv12Frame(frame);
 }
@@ -99,12 +93,12 @@ TEST(PixelDetector, DetectPlayFrame) {
 /* 检测: 点亮 p1/p2/p3/p4 判定为 PLAY_2X
  */
 TEST(PixelDetector, DetectPlay2xFrame) {
-  PixelDetector detector(kRegion1, kRegion2, AV_PIX_FMT_NV12);
+  PixelDetector detector(kPoints, AV_PIX_FMT_NV12);
   AVFrame* frame = CreateNv12Frame(kWidth, kHeight, 16);
-  LightUp(frame, kP1);
-  LightUp(frame, kP2);
-  LightUp(frame, kP3);
-  LightUp(frame, kP4);
+  LightUp(frame, kPoints[1]);
+  LightUp(frame, kPoints[2]);
+  LightUp(frame, kPoints[3]);
+  LightUp(frame, kPoints[4]);
   EXPECT_EQ(FrameState::PLAY_2X, detector.Detect(frame));
   FreeNv12Frame(frame);
 }
@@ -112,10 +106,10 @@ TEST(PixelDetector, DetectPlay2xFrame) {
 /* 检测: 仅点亮 p3/p4 判定为 SELECT
  */
 TEST(PixelDetector, DetectSelectFrame) {
-  PixelDetector detector(kRegion1, kRegion2, AV_PIX_FMT_NV12);
+  PixelDetector detector(kPoints, AV_PIX_FMT_NV12);
   AVFrame* frame = CreateNv12Frame(kWidth, kHeight, 16);
-  LightUp(frame, kP3);
-  LightUp(frame, kP4);
+  LightUp(frame, kPoints[3]);
+  LightUp(frame, kPoints[4]);
   EXPECT_EQ(FrameState::SELECT, detector.Detect(frame));
   FreeNv12Frame(frame);
 }
@@ -123,9 +117,9 @@ TEST(PixelDetector, DetectSelectFrame) {
 /* 检测: 仅点亮 p0 判定为 SELECT_PAUSE
  */
 TEST(PixelDetector, DetectSelectPauseFrame) {
-  PixelDetector detector(kRegion1, kRegion2, AV_PIX_FMT_NV12);
+  PixelDetector detector(kPoints, AV_PIX_FMT_NV12);
   AVFrame* frame = CreateNv12Frame(kWidth, kHeight, 16);
-  LightUp(frame, kP0);
+  LightUp(frame, kPoints[0]);
   EXPECT_EQ(FrameState::SELECT_PAUSE, detector.Detect(frame));
   FreeNv12Frame(frame);
 }
@@ -133,9 +127,9 @@ TEST(PixelDetector, DetectSelectPauseFrame) {
 /* 检测: 仅点亮 p1 时状态无法确定
  */
 TEST(PixelDetector, DetectSinglePoint1IsUndefined) {
-  PixelDetector detector(kRegion1, kRegion2, AV_PIX_FMT_NV12);
+  PixelDetector detector(kPoints, AV_PIX_FMT_NV12);
   AVFrame* frame = CreateNv12Frame(kWidth, kHeight, 16);
-  LightUp(frame, kP1);
+  LightUp(frame, kPoints[1]);
   EXPECT_EQ(FrameState::UNDEFINED, detector.Detect(frame));
   FreeNv12Frame(frame);
 }
@@ -143,10 +137,10 @@ TEST(PixelDetector, DetectSinglePoint1IsUndefined) {
 /* 检测: 无法归入任何已知组合的状态
  */
 TEST(PixelDetector, DetectMixedPatternIsUndefined) {
-  PixelDetector detector(kRegion1, kRegion2, AV_PIX_FMT_NV12);
+  PixelDetector detector(kPoints, AV_PIX_FMT_NV12);
   AVFrame* frame = CreateNv12Frame(kWidth, kHeight, 16);
-  LightUp(frame, kP0);
-  LightUp(frame, kP3);
+  LightUp(frame, kPoints[0]);
+  LightUp(frame, kPoints[3]);
   EXPECT_EQ(FrameState::UNDEFINED, detector.Detect(frame));
   FreeNv12Frame(frame);
 }
@@ -154,7 +148,7 @@ TEST(PixelDetector, DetectMixedPatternIsUndefined) {
 /* 检测: 帧尺寸小于定位区域时所有检测点越界, 判定为 DEPLOY
  */
 TEST(PixelDetector, DetectFrameSmallerThanRegionsIsDeploy) {
-  PixelDetector detector(kRegion1, kRegion2, AV_PIX_FMT_NV12);
+  PixelDetector detector(kPoints, AV_PIX_FMT_NV12);
   AVFrame* frame = CreateNv12Frame(320, 240, 16);
   EXPECT_EQ(FrameState::DEPLOY, detector.Detect(frame));
   FreeNv12Frame(frame);
@@ -175,7 +169,7 @@ TEST(FrameStateStr, AllStatesHaveNames) {
 /* 相似度检测器: 定位模板文件不存在时抛出异常
  */
 TEST(SimilarityDetector, MissingLocatorFileThrows) {
-  EXPECT_THROW(SimilarityDetector detector(kRegion1, kRegion2,
+  EXPECT_THROW(SimilarityDetector detector(cv::Rect(), cv::Rect(),
                                            "nonexistent_locator.png"),
                std::runtime_error);
 }

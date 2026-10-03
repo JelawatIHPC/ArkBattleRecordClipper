@@ -1,5 +1,8 @@
 ﻿#pragma once
 
+#include <array>
+#include <optional>
+#include <utility>
 #include <vector>
 #include <opencv2/opencv.hpp>
 
@@ -30,12 +33,8 @@ struct LocatorResult {
 	static LocatorResult Mean(std::vector<LocatorResult>& V);
 };
 
-/* 双模板定位结果
- */
-struct LocateResult {
-	LocatorResult locator1;   // 第一个模板 (locator.png) 的定位结果, box 为空表示该帧未找到
-	LocatorResult locator2;   // 第二个模板 (locator2.png) 的定位结果, box 为空表示该帧未找到
-};
+// 定位成功后交给检测器的五个绝对坐标。
+using LocateResult = std::optional<std::array<std::pair<int, int>, 5>>;
 
 class ACLocator {
 	/* 基于 OpenCV 的双模板定位功能封装
@@ -48,36 +47,26 @@ public:
 	 *
 	 * @param locator1_filename 第一个定位模板图像文件路径
 	 * @param locator2_filename 第二个定位模板图像文件路径
+	 * @param locator2A_filename 一倍速按钮定位模板图像文件路径
 	 */
-	ACLocator(const std::string& locator1_filename, const std::string& locator2_filename);
+	ACLocator(const std::string& locator1_filename,
+	          const std::string& locator2_filename,
+	          const std::string& locator2A_filename);
 	~ACLocator();
 
-	/* 在视频帧中定位两个模板
+	/* 在视频帧中定位模板并生成检测点
 	 *
-	 * 先只对模板 1 做粗定位 (阈值 0.8), 粗定位成功后再精定位模板 1;
-	 * 模板 1 精确匹配失败时模板 2 也直接跳过, 成功时才以模板 1 的
-	 * 精定位结果为参考精定位模板 2。
+	 * 内部完成粗定位、精定位以及第二模板候选的匹配。模板 1 命中后，
+	 * locator2.png 或 locator2A.png 任意一个命中即可返回五个检测点。
+	 * 如果存在上一帧模板 1 结果，优先使用小窗口定位，失败后自动回退
+	 * 到全窗口定位。
 	 *
 	 * @param frame 视频帧, NV12 像素格式
 	 * @param threshold 精确匹配阶段的最低匹配分数
 	 *
-	 * @return LocateResult 两个模板各自的定位结果, 某个 box 为空表示该帧没有对应的模板
+	 * @return LocateResult 定位成功时返回五个绝对坐标，否则返回空值
 	 */
 	LocateResult Locate(const AVFrame* frame, double threshold = 0.95);
-
-	/* 小窗口定位: 以最近一次模板 1 的成功结果为中心, 在很小的空间与尺度范围内定位两个模板
-	 *
-	 * 与 Locate 的全窗口流程 (粗定位 + 精定位) 不同, 本方法直接复用上一帧模板 1 的
-	 * 精定位结果: 搜索区域为上一帧框外扩 6px, 高度窗口为上一帧高度 ±2px。
-	 * 从未成功定位过模板 1 (内部参考为空) 时直接返回两个空 box。
-	 * 模板 1 命中时更新内部参考, 并照常精定位模板 2; 未命中时内部参考保持不变。
-	 *
-	 * @param frame 视频帧, NV12 像素格式
-	 * @param threshold 精确匹配阶段的最低匹配分数
-	 *
-	 * @return LocateResult 两个模板各自的定位结果, 某个 box 为空表示该帧没有对应的模板
-	 */
-	LocateResult LocateSmall(const AVFrame* frame, double threshold = 0.95);
 
 private:
 	/* 单个模板的模板数据与粗略匹配平面
@@ -89,7 +78,7 @@ private:
 		int max_target_h;   // 粗定位平面高度上限 (720P 下模板高度)
 	};
 
-	std::vector<LocatorTemplate> templates_;   // 长度为 2, 依次对应两个模板
+	std::vector<LocatorTemplate> templates_;   // 依次对应 locator.png、locator2.png、locator2A.png
 
 	LocatorResult prev_fine1_;   // 最近一次模板 1 精定位结果, box 为空表示从未成功定位
 
@@ -115,13 +104,25 @@ private:
 	 * 高度为模板 1 匹配高度按模板高度比例换算后取 ±3px。
 	 *
 	 * @param frame 视频帧, NV12 像素格式
-	 * @param index 模板索引 (0 或 1)
+	 * @param index 模板索引 (0、1 或 2)
 	 * @param reference 模板 1 的粗定位结果 (index 为 0 时) 或精定位结果 (index 为 1 时), box 为空时直接返回空结果
 	 * @param threshold 精确匹配阶段的最低匹配分数
 	 *
 	 * @return LocatorResult 精定位结果, box 为空表示未找到
 	 */
 	LocatorResult LocateFine(const AVFrame* frame, size_t index, const LocatorResult& reference, double threshold = 0.95);
+
+	/* 使用上一帧模板 1 结果在小窗口内定位模板 1。 */
+	LocatorResult LocateFineSmall(const AVFrame* frame, double threshold = 0.95);
+
+	/* 在同一帧尝试两个第二模板并生成五个检测点。 */
+	LocateResult LocateSecond(const AVFrame* frame, const LocatorResult& fine1, double threshold);
+
+	/* 根据两个模板的定位框生成五个检测点。 */
+	std::array<std::pair<int, int>, 5> BuildDetectPoints(
+	    const LocatorResult& fine1,
+	    const LocatorResult& fine2,
+	    bool locator2A) const;
 
 	/* 粗糙定位单个模板
 	 *
