@@ -198,6 +198,20 @@ ACDecoder::ACDecoder(const std::string& filename, Codec codec, Format format) {
     if (!ret_frame || !hardware_frame) {
         throw std::runtime_error("分配帧内存失败");
     }
+
+    // 试解码第一帧
+    {
+        AVFrame* probe = av_frame_alloc();
+        if (!probe) {
+            throw std::runtime_error("分配帧内存失败");
+        }
+        Decode(probe);
+        av_frame_free(&probe);
+        if (av_seek_frame(input_format_ctx, input_stream->index, 0, AVSEEK_FLAG_BACKWARD) < 0) {
+            throw std::runtime_error("试解码后尝试回到视频起始位置时出错");
+        }
+        avcodec_flush_buffers(input_codec_ctx);
+    }
 }
 
 

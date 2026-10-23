@@ -135,6 +135,8 @@ TEST(ACDecoder, AutoCodecDecodesOneFrame) {
     AVFrame* frame = decoder.Decode();
 
     EXPECT_NE(nullptr, frame);
+    // GetFormat 必须与实际解码帧格式一致 (构造期试解码保证回退后格式正确)
+    EXPECT_EQ(decoder.GetFormat(), frame->format);
     EXPECT_EQ(kWidth, decoder.GetWidth());
     EXPECT_EQ(kHeight, decoder.GetHeight());
     EXPECT_FALSE(decoder.GetCodecName().empty());

@@ -50,6 +50,22 @@ static void MetricsStore(const ProgressMetrics& metrics) {
     g_progress_metrics.store(metrics);
 }
 
+// 编码器字符串到枚举的映射
+static std::unordered_map<std::string, ACEncoder::Codec> ENCODER_MAP = {
+    { "auto", ACEncoder::Codec::AUTO },
+    { "cpu", ACEncoder::Codec::OPENH264 },
+    { "qsv", ACEncoder::Codec::QSV },
+    { "nvenc", ACEncoder::Codec::NVENC },
+    { "amf", ACEncoder::Codec::AMF },
+};
+
+// 解码器字符串到枚举的映射
+static std::unordered_map<std::string, ACDecoder::Codec> DECODER_MAP = {
+    { "auto", ACDecoder::Codec::AUTO },
+    { "dxva2", ACDecoder::Codec::DXVA2 },
+    { "cpu", ACDecoder::Codec::CPU },
+};
+
 // ===== 崩溃现场快照 (crashguard 回调数据源, 见 docs/CRASH_GUARD_PLAN.md §3) =====
 
 /* 快照数值字段: 处理流程单写者 relaxed 更新, 崩溃线程无锁读取 */
@@ -277,14 +293,24 @@ public:
      * @brief 获取预分析结果
      * 
      * 阻塞等待当前预分析完成并返回定位结果。
+     * 若结果已被消费 (future 失效) 且输入文件非空, 以当前配置重新拉起预分析,
+     * 使启动操作在预分析结果缺失时自愈, 无需用户重新选择文件。
      * 
+     * @param setting 当前配置
      * @return LocateResult 定位结果
      * 
      * @throw std::runtime_error 预分析失败或未完成时抛出
     */
-    LocateResult GetResult() {
+    LocateResult GetResult(const Setting& setting) {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!future_.valid()) throw std::runtime_error("预分析尚未开始, 请先选择输入文件");
+        if (!future_.valid()) {
+            if (setting.input_filename_utf8.empty())
+                throw std::runtime_error("预分析尚未开始, 请先选择输入文件");
+            current_++;
+            future_ = std::async(std::launch::async, [this, setting, generation = current_.load()]() {
+                return Analyse(setting, generation);
+            });
+        }
         LocateResult result = future_.get();
         if (!result)
             throw std::runtime_error("预分析未完成, 请重新选择输入文件");
@@ -311,7 +337,7 @@ private:
         metrics.state = WorkState::sLocating;
         MetricsStore(metrics);
 
-        ACDecoder decoder(setting.input_filename_utf8, ACDecoder::Codec::AUTO, ACDecoder::Format::NV12);
+        ACDecoder decoder(setting.input_filename_utf8, DECODER_MAP[setting.decoder], ACDecoder::Format::NV12);
         ACLocator locator(setting.locator_filename_ansi,
                           setting.locator2_filename_ansi,
                           setting.locator2A_filename_ansi);
@@ -440,22 +466,6 @@ static PreAnalyser g_analyser;
 
 void Start(const Setting& setting) {
     
-    // 编码器字符串到枚举的映射
-    const std::unordered_map<std::string, ACEncoder::Codec> ENCODER_MAP = {
-        { "auto", ACEncoder::Codec::AUTO },
-        { "cpu", ACEncoder::Codec::OPENH264 },
-        { "qsv", ACEncoder::Codec::QSV },
-        { "nvenc", ACEncoder::Codec::NVENC },
-        { "amf", ACEncoder::Codec::AMF },
-    };
-
-    // 解码器字符串到枚举的映射
-    static const std::unordered_map<std::string, ACDecoder::Codec> DECODER_MAP = {
-        { "auto", ACDecoder::Codec::AUTO },
-        { "dxva2", ACDecoder::Codec::DXVA2 },
-        { "cpu", ACDecoder::Codec::CPU },
-    };
-    
     cv::utils::logging::setLogLevel(cv::utils::logging::LOG_LEVEL_WARNING);
 #ifndef _DEBUG
     av_log_set_level(AV_LOG_FATAL);
@@ -478,9 +488,8 @@ void Start(const Setting& setting) {
     strncpy_s(g_crash_decoder, setting.decoder.c_str(), _TRUNCATE);
 
     // 第一轮：等待预分析完成, 获取两个暂停按钮定位结果
-    LocateResult detect_result = g_analyser.GetResult();
+    LocateResult detect_result = g_analyser.GetResult(setting);
 
-    // 计时器
     ACMsTimer timer{ DISPLAY_INTERVAL_MS };
 
     // 第二轮：识别暂停
